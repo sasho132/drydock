@@ -207,6 +207,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 | Dashboard says “read-only” | `DRYDOCK_UI_PASSWORD` is empty |
 | `address already in use` | Change `DRYDOCK_PORT` in `.env` |
 | `manifest unknown` on `docker compose pull` | You are pulling without a published image. Use `up -d --build`, or publish a `v*` tag, set `DRYDOCK_IMAGE`, and log in to GHCR / make the package public |
+| The `drydock` row shows `rejected credentials` | It tried to update itself. Pull the latest Compose file (`drydock.enable: "false"`) and run `docker compose up -d` |
 | Rootless Docker | Mount `${XDG_RUNTIME_DIR}/docker.sock` instead of `/var/run/docker.sock` and adjust `DOCKER_GID` |
 
 ## What an update actually does

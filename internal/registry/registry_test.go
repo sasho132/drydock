@@ -181,3 +181,31 @@ func decodeAuth(t *testing.T, s string) map[string]string {
 	}
 	return m
 }
+
+func TestResolveUnauthorizedWithoutCredentials(t *testing.T) {
+	var srvURL string
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	srvURL = srv.URL
+
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"token": "anonymous"})
+	})
+	mux.HandleFunc("/v2/app/manifests/latest", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s/token",service="test"`, srvURL))
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+
+	ref := strings.TrimPrefix(srv.URL, "http://") + "/app:latest"
+	_, err := newTestClient(nil).Resolve(context.Background(), ref, Platform{})
+	if err == nil {
+		t.Fatal("expected an authorization error")
+	}
+	if !strings.Contains(err.Error(), "may not exist or may be private") {
+		t.Fatalf("error is misleading: %v", err)
+	}
+	if strings.Contains(err.Error(), "giving up") {
+		t.Fatalf("401 should not be retried until exhaustion: %v", err)
+	}
+}

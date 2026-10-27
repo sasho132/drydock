@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +92,29 @@ func TestSelectHonoursOptInAndScope(t *testing.T) {
 	policies, _ = Select([]*model.Container{stopped}, cfg)
 	if len(policies) != 1 {
 		t.Fatal("stopped container should be included when configured")
+	}
+}
+
+func TestSelectSkipsDrydockItself(t *testing.T) {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		t.Skip("hostname unavailable")
+	}
+	self := ctr("drydock", nil, true)
+	self.Inspect.ID = host
+
+	policies, skipped := Select([]*model.Container{self}, config.Default())
+	if len(policies) != 0 {
+		t.Fatalf("drydock selected itself: %v", policyNames(policies))
+	}
+	if len(skipped) != 1 || skipped[0].Reason != ReasonSelf {
+		t.Fatalf("skipped = %+v", skipped)
+	}
+
+	other := ctr("web", nil, true)
+	policies, _ = Select([]*model.Container{other}, config.Default())
+	if len(policies) != 1 {
+		t.Fatalf("unrelated container was skipped: %v", skipped)
 	}
 }
 

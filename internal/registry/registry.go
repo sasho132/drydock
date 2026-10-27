@@ -217,6 +217,7 @@ func (c *Client) getManifest(ctx context.Context, host, manifestURL, repo string
 // failures with exponential backoff.
 func (c *Client) doWithAuth(ctx context.Context, req *http.Request, host, repo string) (*http.Response, error) {
 	var lastErr error
+	unauthorized := 0
 	for attempt := 0; attempt <= c.retries; attempt++ {
 		if attempt > 0 {
 			if err := sleepBackoff(ctx, attempt, lastErr); err != nil {
@@ -238,7 +239,18 @@ func (c *Client) doWithAuth(ctx context.Context, req *http.Request, host, repo s
 		case resp.StatusCode == http.StatusUnauthorized:
 			resp.Body.Close()
 			c.dropToken(host, repo)
-			lastErr = fmt.Errorf("registry %s rejected credentials", host)
+			hasCreds := c.hasCredentials(host)
+			// A cached token may simply have expired. Retry once with a fresh
+			// one; after that, a 401 is a real authorization failure.
+			if hasCreds && unauthorized == 0 {
+				unauthorized++
+				lastErr = fmt.Errorf("registry %s rejected credentials", host)
+				continue
+			}
+			if !hasCreds {
+				return nil, fmt.Errorf("registry %s denied access to %s (the repository may not exist or may be private)", host, repo)
+			}
+			return nil, fmt.Errorf("registry %s rejected credentials for %s", host, repo)
 		case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 			retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
 			resp.Body.Close()
@@ -400,6 +412,11 @@ func (c *Client) credentials(host string) Credentials {
 		}
 	}
 	return Credentials{}
+}
+
+func (c *Client) hasCredentials(host string) bool {
+	creds := c.credentials(host)
+	return creds.Username != "" || creds.Password != "" || creds.IdentityToken != ""
 }
 
 func (c *Client) cachedToken(host, repo string) string {

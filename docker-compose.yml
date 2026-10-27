@@ -16,6 +16,11 @@ services:
     container_name: drydock
     restart: unless-stopped
 
+    labels:
+      # Never try to update the updater. Drydock also detects its own container
+      # automatically, but the label is explicit and survives custom hostnames.
+      drydock.enable: "false"
+
     # The image runs as the nonroot user, so it needs the group that owns the
     # Docker socket. Set DOCKER_GID in .env (see .env.example).
     user: "65532:65532"

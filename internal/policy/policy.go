@@ -5,6 +5,7 @@ package policy
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -285,7 +286,7 @@ func Select(containers []*model.Container, cfg *config.Config) ([]Policy, []Skip
 			skipped = append(skipped, Skipped{Container: c, Reason: ReasonScope})
 			continue
 		}
-		if p.Self && !selfUpdateAllowed(cfg) {
+		if p.Self || isSelfContainer(c) {
 			skipped = append(skipped, Skipped{Container: c, Reason: ReasonSelf})
 			continue
 		}
@@ -303,11 +304,21 @@ func scopeMatches(c *model.Container, cfg *config.Config) bool {
 	return got == cfg.Scope
 }
 
-// selfUpdateAllowed reports whether drydock's own container may be updated.
-// Restarting the updater from inside itself is inherently racy, so this is
-// intentionally opt-in and currently always false. Operators update drydock
-// deliberately with `docker compose pull drydock && docker compose up -d`.
-func selfUpdateAllowed(*config.Config) bool { return false }
+// isSelfContainer detects drydock's own container without requiring a label.
+// Docker sets a container's hostname to its short ID unless it was overridden,
+// so comparing the two is reliable for the normal Compose deployment.
+func isSelfContainer(c *model.Container) bool {
+	host, err := os.Hostname()
+	if err != nil {
+		return false
+	}
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return false
+	}
+	id := c.ID()
+	return id == host || (len(host) >= 12 && strings.HasPrefix(id, host))
+}
 
 // Level is a set of policies that can be updated concurrently because none of
 // them depend on one another.
