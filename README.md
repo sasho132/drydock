@@ -138,7 +138,8 @@ chmod 600 .env
 # Optional: report what would change, without changing anything
 docker compose run --rm drydock check
 
-# Build and start
+# Build and start. In build mode, `docker compose pull` is unnecessary and
+# skips this service when DRYDOCK_IMAGE is not set.
 docker compose up -d --build
 docker compose logs -f drydock
 ```
@@ -205,6 +206,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 | `permission denied ... docker.sock` | `DOCKER_GID` does not match the socket's group |
 | Dashboard says “read-only” | `DRYDOCK_UI_PASSWORD` is empty |
 | `address already in use` | Change `DRYDOCK_PORT` in `.env` |
+| `manifest unknown` on `docker compose pull` | You are pulling without a published image. Use `up -d --build`, or publish a `v*` tag, set `DRYDOCK_IMAGE`, and log in to GHCR / make the package public |
 | Rootless Docker | Mount `${XDG_RUNTIME_DIR}/docker.sock` instead of `/var/run/docker.sock` and adjust `DOCKER_GID` |
 
 ## What an update actually does

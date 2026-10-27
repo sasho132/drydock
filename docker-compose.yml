@@ -2,9 +2,11 @@ name: drydock
 
 services:
   drydock:
-    # Built locally by default. Set DRYDOCK_IMAGE in .env to use a published
-    # image instead (see README: "Deploy on a server").
-    image: ${DRYDOCK_IMAGE:-drydock:latest}
+    # Empty = build locally with `docker compose up -d --build`.
+    # With no image name, `docker compose pull` skips this service instead of
+    # trying to fetch a local tag from Docker Hub.
+    # Set DRYDOCK_IMAGE to a published image to pull instead.
+    image: ${DRYDOCK_IMAGE:-}
     build:
       context: .
       args:
