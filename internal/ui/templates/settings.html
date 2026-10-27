@@ -1,0 +1,121 @@
+{{define "content"}}
+{{with .Settings}}
+<section class="page-head">
+  <div>
+    <h1>Settings</h1>
+    <p class="muted">Effective configuration for this instance. Secrets are never displayed.</p>
+  </div>
+</section>
+
+<div class="banner info">
+  Settings are read from the config file, <code>DRYDOCK_*</code> environment variables, and flags
+  (later wins). Edit the file and restart Drydock to apply changes; the dashboard is intentionally not a settings editor.
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <header class="panel-head"><h2>General</h2></header>
+    <dl class="facts">
+      <dt>Default interval</dt><dd>{{.Interval}}</dd>
+      <dt>Schedule</dt><dd>{{if .Schedule}}<code>{{.Schedule}}</code>{{else}}<span class="muted">not set (interval)</span>{{end}}</dd>
+      <dt>Scope</dt><dd>{{if .Scope}}<code>{{.Scope}}</code>{{else}}<span class="muted">none</span>{{end}}</dd>
+      <dt>State file</dt><dd class="mono small">{{.StateFile}}</dd>
+      <dt>Log level</dt><dd>{{.LogLevel}}</dd>
+      <dt>Log format</dt><dd>{{.LogFormat}}</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <header class="panel-head"><h2>Update behaviour</h2></header>
+    <dl class="facts">
+      <dt>Concurrency</dt><dd>{{.Concurrency}}</dd>
+      <dt>Graceful stop timeout</dt><dd>{{.StopTimeout}}</dd>
+      <dt>Health timeout</dt><dd>{{.HealthTimeout}}</dd>
+      <dt>Stability settle</dt><dd>{{.Settle}}</dd>
+      <dt>Automatic rollback</dt><dd>{{if .Rollback}}<span class="status ok">enabled</span>{{else}}<span class="status muted">disabled</span>{{end}}</dd>
+      <dt>Cleanup old images</dt><dd>{{if .Cleanup}}yes{{else}}no{{end}} (keep {{.KeepImages}})</dd>
+      <dt>Remove anon. volumes</dt><dd>{{if .RemoveVolumes}}yes{{else}}no{{end}}</dd>
+    </dl>
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <header class="panel-head"><h2>Management</h2></header>
+    <dl class="facts">
+      <dt>Label prefix</dt><dd class="mono">{{.LabelPrefix}}</dd>
+      <dt>Require opt-in label</dt><dd>{{if .LabelEnable}}yes{{else}}no{{end}}</dd>
+      <dt>Monitor only</dt><dd>{{if .MonitorOnly}}yes{{else}}no{{end}}</dd>
+      <dt>Include stopped</dt><dd>{{if .IncludeStopped}}yes{{else}}no{{end}}</dd>
+      <dt>Dry run</dt><dd>{{if .DryRun}}yes{{else}}no{{end}}</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <header class="panel-head"><h2>API &amp; dashboard</h2></header>
+    <dl class="facts">
+      <dt>Listen address</dt><dd class="mono">{{.APIAddr}}</dd>
+      <dt>API bearer token</dt><dd>{{if .APITokenSet}}<span class="status ok">set</span>{{else}}<span class="muted">not set</span>{{end}}</dd>
+      <dt>Dashboard</dt><dd>{{if .UIEnabled}}enabled{{else}}disabled{{end}}</dd>
+      <dt>Dashboard login</dt><dd>{{if .UIAuth}}<span class="status ok">required</span> ({{.UIUser}}){{else}}<span class="status warn">read-only</span>{{end}}</dd>
+      <dt>Metrics</dt><dd><a href="/metrics">/metrics</a></dd>
+      <dt>JSON API</dt><dd><a href="/v1/containers">/v1/containers</a></dd>
+    </dl>
+  </section>
+</div>
+
+<section class="panel">
+  <header class="panel-head"><h2>Registry credentials</h2></header>
+  {{if .Registries}}
+  <div class="table-wrap">
+    <table class="table compact">
+      <thead><tr><th>Registry</th><th>Username</th><th>Password</th></tr></thead>
+      <tbody>
+        {{range .Registries}}
+        <tr><td class="mono">{{.Host}}</td><td>{{dash .Username}}</td><td class="muted">••••••••</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="empty">No credentials in the config file. Docker's <code>~/.docker/config.json</code> is used as a fallback.</p>
+  {{end}}
+</section>
+
+<section class="panel">
+  <header class="panel-head"><h2>Notifications</h2></header>
+  {{if .Notifications}}
+  <div class="table-wrap">
+    <table class="table compact">
+      <thead><tr><th>Type</th><th>Target</th><th>Events</th></tr></thead>
+      <tbody>
+        {{range .Notifications}}
+        <tr><td>{{.Type}}</td><td class="mono small">{{.Target}}</td><td class="small muted">{{if .Events}}{{.Events}}{{else}}all{{end}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="empty">No notification sinks configured.</p>
+  {{end}}
+</section>
+
+<section class="panel">
+  <header class="panel-head"><h2>Per-container overrides</h2></header>
+  {{if .Overrides}}
+  <div class="table-wrap">
+    <table class="table compact">
+      <thead><tr><th>Container</th><th>Override</th></tr></thead>
+      <tbody>
+        {{range .Overrides}}
+        <tr><td><a class="name" href="/containers/view?name={{.Name}}">{{.Name}}</a></td><td class="mono small">{{.Summary}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="empty">No per-container overrides. Labels are the usual way to customise behaviour.</p>
+  {{end}}
+</section>
+{{end}}
+{{end}}

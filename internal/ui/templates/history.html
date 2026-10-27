@@ -1,0 +1,38 @@
+{{define "content"}}
+<section class="page-head">
+  <div>
+    <h1>History</h1>
+    <p class="muted">An audit trail of every update, failure, and rollback. Snapshots are kept so failures can be reversed.</p>
+  </div>
+</section>
+
+<section class="panel">
+  <form method="get" action="/history" class="filters">
+    <label>
+      <span>Container</span>
+      <input type="search" name="container" value="{{.Query}}" placeholder="name contains…">
+    </label>
+    <label>
+      <span>Status</span>
+      <select name="status">
+        <option value="" {{if eq .FilterStatus ""}}selected{{end}}>any</option>
+        <option value="updated" {{if eq .FilterStatus "updated"}}selected{{end}}>updated</option>
+        <option value="failed" {{if eq .FilterStatus "failed"}}selected{{end}}>failed</option>
+        <option value="rolled_back" {{if eq .FilterStatus "rolled_back"}}selected{{end}}>rolled back</option>
+      </select>
+    </label>
+    <div class="filter-actions">
+      <button class="btn" type="submit">Apply</button>
+      {{if or .Query .FilterStatus}}<a class="btn ghost" href="/history">Clear</a>{{end}}
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <h2>{{len .History}} entr{{if ne (len .History) 1}}ies{{else}}y{{end}}</h2>
+    <span class="muted small">newest first</span>
+  </header>
+  {{template "historyList" .}}
+</section>
+{{end}}

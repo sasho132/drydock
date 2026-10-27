@@ -1,0 +1,109 @@
+{{define "containerTable"}}
+<div class="table-wrap">
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">Container</th>
+        <th scope="col">Image</th>
+        <th scope="col">State</th>
+        <th scope="col">Policy</th>
+        <th scope="col">Last change</th>
+        <th scope="col" class="right">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Containers}}
+      <tr>
+        <td>
+          <a class="name" href="/containers/view?name={{.Name}}">{{.Name}}</a>
+          {{if .Pinned}}<span class="badge" title="Digest-pinned: the tag can never move">pinned</span>{{end}}
+        </td>
+        <td class="mono small">{{.Image}}</td>
+        <td>
+          <span class="status {{if .Running}}ok{{else}}muted{{end}}">{{.Status}}</span>
+          {{if ne .Health "none"}}<span class="status {{healthClass .Health}}">{{.Health}}</span>{{end}}
+        </td>
+        <td class="chips">
+          {{if .Managed}}<span class="badge">managed</span>{{else}}<span class="badge muted">unmanaged</span>{{end}}
+          {{if .MonitorOnly}}<span class="badge warn">monitor</span>{{end}}
+          {{if .Approve}}<span class="badge info">approval</span>{{end}}
+        </td>
+        <td class="muted small last-change">
+          {{if .LastTime.IsZero}}<span class="muted">—</span>{{else}}<span class="status {{statusClass .LastStatus}}">{{.LastStatus}}</span> <span title="{{datetime .LastTime}}">{{ago .LastTime}}</span>{{end}}
+        </td>
+        <td class="right actions">
+          {{if $.CanAct}}
+            <form method="post" action="/actions/update" class="inline">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="container" value="{{.Name}}">
+              <input type="hidden" name="next" value="{{$.Path}}">
+              <button class="btn xs" type="submit" {{if $.JobRunning}}disabled{{end}}>Update</button>
+            </form>
+            {{if .CanRollback}}
+            <form method="post" action="/actions/rollback" class="inline">
+              <input type="hidden" name="csrf" value="{{$.CSRF}}">
+              <input type="hidden" name="container" value="{{.Name}}">
+              <input type="hidden" name="next" value="{{$.Path}}">
+              <button class="btn xs danger" type="submit" data-confirm="Roll {{.Name}} back to the image it ran before its last successful update?" {{if $.JobRunning}}disabled{{end}}>Rollback</button>
+            </form>
+            {{end}}
+          {{else}}
+            <span class="muted small">read-only</span>
+          {{end}}
+        </td>
+      </tr>
+      {{else}}
+      <tr><td colspan="6" class="empty">No containers match.</td></tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{end}}
+
+{{define "pendingList"}}
+{{if .Pending}}
+<ul class="pending">
+  {{range .Pending}}
+  <li>
+    <div class="pending-main">
+      <a class="name" href="/containers/view?name={{.Container}}">{{.Container}}</a>
+      <span class="mono small muted">{{.Image}}</span>
+      <span class="small muted">detected {{ago .DetectedAt}}</span>
+    </div>
+    {{if $.CanAct}}
+    <form method="post" action="/actions/update" class="inline">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="container" value="{{.Container}}">
+      <input type="hidden" name="next" value="{{$.Path}}">
+      <button class="btn xs primary" type="submit" {{if $.JobRunning}}disabled{{end}}>Update</button>
+    </form>
+    {{end}}
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="empty">Nothing awaiting approval.</p>
+{{end}}
+{{end}}
+
+{{define "historyList"}}{{template "historyRows" .History}}{{end}}
+
+{{define "historyRows"}}
+{{if .}}
+<ul class="timeline">
+  {{range .}}
+  <li class="timeline-item">
+    <span class="status {{statusClass .Status}}">{{.Status}}</span>
+    <div class="timeline-main">
+      <div><a class="name" href="/containers/view?name={{.Container}}">{{.Container}}</a> <span class="mono small muted">{{.Image}}</span></div>
+      {{if .Message}}<div class="small muted">{{.Message}}</div>{{end}}
+      {{if and .OldImage .NewImage}}<div class="mono small muted">{{.OldImage}} → {{.NewImage}}</div>{{end}}
+    </div>
+    <time class="small muted" datetime="{{rfc3339 .Time}}" title="{{datetime .Time}}">{{ago .Time}}</time>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<p class="empty">No history yet. Run a check or an update to get started.</p>
+{{end}}
+{{end}}

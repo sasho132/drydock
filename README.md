@@ -1,0 +1,466 @@
+<div align="center">
+
+# ⚓ Drydock
+
+**Refit your containers. Safely.**
+
+A Docker auto-updater that pulls new images, recreates containers from their
+exact configuration, verifies the replacement is healthy, and **automatically
+rolls back when it is not.**
+
+<img src="docs/dashboard.png" alt="Drydock dashboard showing managed containers, pending approvals, and recent activity" width="940">
+
+<sub>The embedded dashboard: live status, per-container actions, and an audit trail.</sub>
+
+</div>
+
+---
+
+Watchtower was the tool everyone reached for, and it is now
+[unmaintained](https://github.com/containrrr/watchtower/discussions/2135).
+Drydock is a from-scratch successor built around the one thing Watchtower never
+did: **a failed update should never leave your service down.** If the new
+container crashes, fails its healthcheck, or does not answer its health port,
+Drydock puts the previous container back and tells you why.
+
+```
+┌──────────┐   pull    ┌───────────┐  verify  ┌────────────┐
+│  check   │ ────────▶ │ recreate  │ ───────▶ │  healthy?  │
+└──────────┘           └───────────┘          └─────┬──────┘
+                            ▲                       │ no
+                            │      ┌───────────┐    │
+                            └──────│ rollback  │ ◀──┘
+                                   └───────────┘
+```
+
+## Why not just use Watchtower?
+
+| | Watchtower | Drydock |
+|---|---|---|
+| Project status | Archived Dec 2025 | Actively developed |
+| Failed update | Old container already gone | **Automatic rollback**, verified |
+| Health verification | None | Docker healthcheck, TCP/HTTP probe, crash-loop detection |
+| History | In-memory, lost on restart | Persistent JSON store with config snapshots |
+| Manual rollback | Not possible | `drydock rollback <container>` |
+| Scheduling | One global cron | Per-container schedules via labels |
+| Dependencies | Links only | Links + `depends-on` + Compose `depends_on`, cycle detection |
+| TLS to registries | `InsecureSkipVerify: true` hardcoded | Verification on by default, opt-out per registry |
+| Multi-arch digests | Compares index digest only | Compares index **and** platform manifest digest |
+| Rate limits | Fails on 429 | Honours `Retry-After`, exponential backoff |
+| Config | ~70 flags | YAML file + labels + env + flags, typo-safe |
+| Observability | `/metrics` + logs | Structured logs, Prometheus metrics, JSON API |
+| Web UI | None | Embedded dashboard with live job status and rollback |
+| Updates | Serial | Dependency-aware, concurrent within a level |
+
+## Quick start
+
+```bash
+# Build the image (or use your own published tag)
+docker build -t drydock .
+
+docker run -d \
+  --name drydock \
+  --restart unless-stopped \
+  --group-add 0 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v drydock-data:/var/lib/drydock \
+  -e DRYDOCK_INTERVAL=6h \
+  drydock
+```
+
+> The image runs as the nonroot user, so it needs the group that owns the
+> Docker socket. On Docker Desktop that is group `0`. On Linux use
+> `--group-add "$(stat -c '%g' /var/run/docker.sock)"`. Running with
+> `--user 0:0` also works but gives up the nonroot default.
+
+Add a dashboard (see [Web dashboard](#web-dashboard)):
+
+```bash
+docker run -d --name drydock-ui \
+  --group-add 0 \
+  -p 8080:8080 \
+  -e DRYDOCK_API_ENABLED=true \
+  -e DRYDOCK_UI_PASSWORD=change-me \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v drydock-data:/var/lib/drydock \
+  drydock
+```
+
+Open <http://localhost:8080> and sign in as `admin`.
+
+That is enough: every six hours Drydock checks every running container,
+updates the ones whose tag moved, and rolls back anything that fails to start.
+
+Check what it would do first:
+
+```bash
+docker run --rm \
+  --group-add 0 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v drydock-data:/var/lib/drydock \
+  drydock check --json
+```
+
+On Linux, replace `--group-add 0` with
+`--group-add "$(stat -c '%g' /var/run/docker.sock)"`.
+
+## What an update actually does
+
+For each container whose image digest changed:
+
+1. **Pull** the new image (credential-aware, rate-limit aware). The old image
+   is never removed.
+2. **Snapshot** the container: config, host config, network attachments, and
+   the exact image ID.
+3. **Stop** it gracefully using its configured `StopSignal` and timeout.
+4. **Rename** the old container aside (it is kept, not deleted).
+5. **Create** a new container with the *same name and configuration* but the new
+   image. Fields that merely mirrored the old image's defaults are dropped so
+   the new image's defaults take effect; genuine user overrides are preserved.
+6. **Start** it and **verify**:
+   - Docker healthcheck → wait for `healthy`;
+   - otherwise `drydock.health-port` / `health-url` → TCP/HTTP probe;
+   - otherwise stay `running` for the settle window without restarting.
+7. **On success**: remove the old container, record history, optionally prune
+   old images (keeping `keep_images` versions for rollback).
+8. **On failure**: remove the half-created container, restore the old container
+   under its original name, start it, and record a `rolled_back` entry.
+
+## Safety model
+
+- **Nothing is deleted before the replacement is proven healthy.** The old
+  container stays stopped-but-present until verification succeeds.
+- **Rollbacks use image IDs, not tags**, so a freshly pushed tag cannot
+  impersonate the version you rolled back to.
+- **The original tag is preserved** in the reserved label
+  `io.drydock.image-ref` when a container is rebuilt from an image ID, so
+  future updates keep following the tag.
+- **Dependency order is respected.** Dependencies are updated first, and
+  containers are stopped in reverse order.
+- **No overlapping runs.** The API, scheduler, and manual commands share one
+  lock; a container is never updated twice concurrently.
+- **State is written atomically** with mode `0600` (it contains env vars).
+- **Drydock never updates itself** by default. Update it deliberately.
+
+## Configuration
+
+Configuration comes from four layers, each overriding the previous:
+
+```
+defaults < config file < DRYDOCK_* environment < command-line flags
+```
+
+Per-container policy comes from labels, with an optional per-container
+override in the config file (which wins over labels).
+
+### Config file
+
+```yaml
+interval: 6h              # default check interval
+# schedule: "0 4 * * *"   # or a cron expression / "@every 6h"
+state_file: /var/lib/drydock/state.json
+
+concurrency: 2            # containers updated in parallel
+stop_timeout: 30s         # graceful stop window
+health_timeout: 2m        # how long to wait for the new container to be healthy
+settle: 3s                # stability window when there is no healthcheck
+rollback: true            # automatic restore on failure
+cleanup: false            # remove old images after success
+keep_images: 2            # ... but keep this many previous versions
+remove_volumes: false     # remove anonymous volumes of the replaced container
+
+include_stopped: false
+monitor_only: false       # detect but never apply
+label_enable: false       # true = only manage containers with enable=true
+label_prefix: drydock
+log_level: info
+log_format: text          # or json
+
+registry:
+  retries: 3
+  timeout: 30s
+  insecure_skip_verify: false   # only for self-signed registries
+  plain_http: false             # only for local test registries
+  auths:
+    ghcr.io:
+      username: bot
+      password: ${GHCR_TOKEN}
+
+api:
+  enabled: true
+  addr: ":8080"
+  token: ""               # required on mutating endpoints when set
+
+notifications:
+  - type: slack
+    url: https://hooks.slack.com/services/...
+    events: [failure, rollback]
+  - type: webhook
+    url: https://example.com/drydock
+    headers:
+      Authorization: Bearer ...
+    events: [update, failure]
+
+containers:
+  postgres:
+    monitor_only: true    # never auto-update the database
+```
+
+See [`docs/config.example.yaml`](docs/config.example.yaml) for the full file.
+
+Configuration is strict: unknown keys are rejected, so typos fail at startup
+instead of silently doing nothing.
+
+### Environment variables
+
+Every scalar setting has a `DRYDOCK_*` equivalent: `DRYDOCK_INTERVAL`,
+`DRYDOCK_SCHEDULE`, `DRYDOCK_STATE_FILE`, `DRYDOCK_CONCURRENCY`,
+`DRYDOCK_CLEANUP`, `DRYDOCK_ROLLBACK`, `DRYDOCK_DRY_RUN`,
+`DRYDOCK_LABEL_ENABLE`, `DRYDOCK_MONITOR_ONLY`, `DRYDOCK_INCLUDE_STOPPED`,
+`DRYDOCK_STOP_TIMEOUT`, `DRYDOCK_HEALTH_TIMEOUT`, `DRYDOCK_SETTLE`,
+`DRYDOCK_LOG_LEVEL`, `DRYDOCK_LOG_FORMAT`, `DRYDOCK_API_ENABLED`,
+`DRYDOCK_API_ADDR`, `DRYDOCK_API_TOKEN`, `DRYDOCK_REGISTRY_INSECURE_SKIP_VERIFY`.
+`DOCKER_HOST` and `DRYDOCK_DOCKER_HOST` select the daemon.
+
+### Container labels
+
+| Label | Default | Meaning |
+|---|---|---|
+| `drydock.enable` | `true` | Managed? In `label_enable` mode, `true` is required |
+| `drydock.monitor-only` | config | Detect updates, never apply |
+| `drydock.approve` | `false` | Record a pending update; apply only with `--force` |
+| `drydock.no-pull` | `false` | Do not pull automatically |
+| `drydock.schedule` | config | Per-container cron/duration |
+| `drydock.depends-on` | – | Comma-separated container names that must update first |
+| `drydock.stop-timeout` | config | Seconds or duration |
+| `drydock.health-timeout` | config | Seconds or duration |
+| `drydock.settle` | config | Seconds or duration |
+| `drydock.health-port` | – | TCP port probed on the container IP |
+| `drydock.health-url` | – | HTTP path probed on `health-port` |
+| `drydock.cleanup` | config | Remove old images after success |
+| `drydock.rollback` | config | Auto-restore on failure |
+| `drydock.priority` | `0` | Higher updates first within a dependency level |
+| `drydock.scope` | `""` | Only managed by an instance with the same `scope` |
+
+Compose's `com.docker.compose.depends_on` is honoured automatically, so
+Compose stacks update `db → cache → web` without any extra labels.
+
+## CLI
+
+```bash
+drydock run                  # long-running daemon (default)
+drydock update               # one update cycle
+drydock check                # report only; --exit-code exits 2 if updates exist
+drydock containers           # list containers and resolved policy
+drydock history --limit 20   # audit trail
+drydock rollback web         # restore the image web ran before its last update
+drydock validate             # validate config and exit
+drydock version
+```
+
+Useful flags: `--config`, `--interval`, `--schedule`, `--only NAME`
+(repeatable), `--force`, `--dry-run`, `--json`, `--timeout`, `--api`,
+`--ui-password`, `--log-level debug`.
+
+```bash
+# Only check a single service, machine-readable, and fail CI if an update exists
+drydock check --only web --json --exit-code
+
+# Apply an update awaiting approval
+drydock update --only web --force
+```
+
+## Web dashboard
+
+The dashboard is compiled into the binary and served at `/` whenever the API is
+enabled. There is no Node.js build step, no CDN, and no separate container: the
+distroless image remains a single static binary.
+
+```bash
+drydock run --api --api-addr :8080 --ui-password "$DRYDOCK_UI_PASSWORD"
+```
+
+or:
+
+```yaml
+api:
+  enabled: true
+  addr: ":8080"
+  ui:
+    enabled: true
+    username: admin
+    password: ${DRYDOCK_UI_PASSWORD}
+```
+
+What you get:
+
+- **Dashboard** — managed/pending/updated/failed/rollback counters, the
+  container table with per-container **Update** and **Rollback** buttons,
+  pending approvals, and recent activity.
+- **Containers** — filterable list and a detail page with image IDs, repo
+  digests, labels, networks, the fully resolved policy, and per-container
+  history.
+- **History** — filter by container name or outcome.
+- **Settings** — the effective configuration with every secret redacted.
+- **Live jobs** — checks, updates, and rollbacks run in the background; the
+  banner polls `/v1/jobs/{id}` and refreshes the page when the job finishes.
+
+### Authentication and safety
+
+- With no `api.ui.password`, the dashboard is **read-only**: it displays state
+  but cannot update or roll back anything.
+- With a password, a login page issues a signed, HttpOnly, `SameSite=Strict`
+  session cookie valid for 12 hours. Changing the password invalidates all
+  sessions.
+- Every mutation needs a per-session CSRF token.
+- Login attempts are rate-limited per IP.
+- Responses carry a strict Content-Security-Policy (`script-src 'self'`,
+  `frame-ancestors 'none'`), and no inline scripts or styles are used.
+- The username defaults to `admin`; override it with `api.ui.username` or
+  `--ui-username`.
+
+The JSON API keeps its own `api.token` bearer authentication and is independent
+of the dashboard session.
+
+## HTTP API
+
+Enable with `--api` / `api.enabled: true`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/healthz` | Liveness |
+| `GET` | `/readyz` | Docker daemon reachability |
+| `GET` | `/metrics` | Prometheus text format |
+| `GET` | `/v1/version` | Version/uptime |
+| `GET` | `/v1/containers` | Containers and resolved policy |
+| `GET` | `/v1/history?limit=50` | Update history |
+| `GET` | `/v1/pending` | Updates awaiting approval |
+| `POST` | `/v1/check` | Run a check (synchronous) |
+| `POST` | `/v1/update` | `{"containers":["web"],"dry_run":false,"force":false}` |
+| `POST` | `/v1/rollback` | `{"container":"web"}` |
+| `POST` | `/v1/jobs` | `{"kind":"check\|update\|rollback","container":"web"}` → `202` |
+| `GET` | `/v1/jobs` | Recent background jobs |
+| `GET` | `/v1/jobs/{id}` | Job status, report, and outcome |
+
+When `api.token` is set, mutating endpoints require
+`Authorization: Bearer <token>`. Read-only endpoints stay open so Prometheus
+and load balancers need no secret.
+
+### Metrics
+
+`drydock_updates_total{result="updated|failed|rolled_back|up_to_date|pending"}`,
+`drydock_scans_total{result=...}`, `drydock_rollbacks_total`,
+`drydock_runs_total`, `drydock_last_run_duration_seconds`,
+`drydock_containers_managed`, `drydock_pending_updates`,
+`drydock_build_info`.
+
+A ready-made Grafana dashboard is on the roadmap.
+
+## How the registry check works
+
+Drydock asks the registry for the manifest of the container's tag, then compares
+it with the digests Docker recorded when the image was pulled:
+
+- For a multi-arch image it selects the manifest matching the container's
+  `os/architecture/variant`, and accepts a match against **either** the index
+  digest or the platform manifest digest. This avoids the false "update
+  available" results Watchtower produces for multi-arch images.
+- Credentials come from `registry.auths`, then Docker's `config.json`
+  (`auths`, including the `https://index.docker.io/v1/` key). Credential
+  helper binaries are deliberately **not** executed by the daemon.
+- `429` responses honour `Retry-After`, `5xx` and network errors are retried
+  with exponential backoff.
+- Digest-pinned references (`repo@sha256:...`) are recognised as immutable and
+  skipped.
+
+## Security
+
+The Docker socket is root-equivalent, and Drydock needs write access to it.
+What Drydock does to reduce that risk:
+
+- The container image runs as **non-root** (`nonroot`, uid 65532).
+- Registry TLS verification is **on by default**; there is no blanket
+  `InsecureSkipVerify`.
+- Credential helpers are not executed; secrets stay in files/IDs you control.
+- The state file is `0600` and written atomically.
+- Health probes are restricted to the container's own IP and path, preventing
+  label-driven SSRF.
+- Drydock does not update its own container.
+
+Further hardening:
+
+```yaml
+# docker-compose.yml
+services:
+  drydock:
+    image: ghcr.io/sasho/drydock:latest
+    user: "65532:65532"
+    group_add:
+      - "${DOCKER_GID:-999}"     # group that owns /var/run/docker.sock
+    read_only: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - drydock-data:/var/lib/drydock
+```
+
+For a stricter setup, point `DOCKER_HOST` at a read/write socket proxy
+(e.g. [`tecnativa/docker-socket-proxy`](https://github.com/Tecnativa/docker-socket-proxy)
+with `CONTAINERS=1`, `IMAGES=1`, `NETWORKS=1`, `POST=1`).
+
+## Building
+
+```bash
+make build      # ./drydock
+make test       # unit tests
+make test-race
+make docker     # container image
+make smoke      # end-to-end test against your local Docker daemon
+```
+
+Requires Go 1.25+ and, for container/smoke targets, Docker.
+
+## Project layout
+
+```
+cmd/                 CLI and dependency wiring
+internal/config/     YAML + env + flags, validation
+internal/policy/     label resolution, selection, dependency planning
+internal/docker/     Engine API: inspect, pull, recreate, rollback, verify
+internal/registry/   token auth, multi-arch manifests, retries, TLS
+internal/engine/     orchestration, history, notifications
+internal/scheduler/  global and per-container schedules
+internal/state/      atomic JSON history + snapshots + approvals
+internal/api/        HTTP API, health, Prometheus exposition
+internal/notify/     webhook, Slack, JSON sinks
+internal/metrics/    dependency-free Prometheus registry
+internal/ui/         embedded dashboard (templates + static assets)
+```
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the reasoning behind the
+recreate/rollback protocol.
+
+## Limitations and roadmap
+
+Not implemented yet (honest list):
+
+- Multi-host / Swarm management
+- Image diff or changelog in notifications
+- OpenTelemetry tracing
+- Windows containers
+- Custom notification templates beyond the built-in sinks
+- Dashboard settings editing (configuration stays file/env based by design)
+
+## Migrating from Watchtower
+
+See [`docs/MIGRATING-FROM-WATCHTOWER.md`](docs/MIGRATING-FROM-WATCHTOWER.md).
+The short version: replace `com.centurylinklabs.watchtower.*` labels with
+`drydock.*`, map `--schedule`/`--interval`/`--cleanup` to the equivalents below,
+and point the state volume at `/var/lib/drydock`.
+
+## License
+
+Apache-2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+
+Drydock is an independent implementation inspired by
+[Watchtower](https://github.com/containrrr/watchtower); no Watchtower source
+code is included.

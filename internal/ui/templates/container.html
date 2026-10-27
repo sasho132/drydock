@@ -1,0 +1,111 @@
+{{define "content"}}
+{{with .Detail}}
+<nav class="crumbs" aria-label="Breadcrumb">
+  <a href="/containers">Containers</a><span>/</span><span>{{.Name}}</span>
+</nav>
+
+<section class="page-head">
+  <div>
+    <h1 class="container-title">{{.Name}}</h1>
+    <div class="chips">
+      <span class="status {{if .Running}}ok{{else}}muted{{end}}">{{.Status}}</span>
+      {{if ne .Health "none"}}<span class="status {{healthClass .Health}}">{{.Health}}</span>{{end}}
+      {{if .Managed}}<span class="badge">managed</span>{{else}}<span class="badge muted">unmanaged</span>{{end}}
+      {{if .Pinned}}<span class="badge" title="Digest-pinned: the tag can never move">digest-pinned</span>{{end}}
+      {{if .MonitorOnly}}<span class="badge warn">monitor only</span>{{end}}
+      {{if .Approve}}<span class="badge info">needs approval</span>{{end}}
+    </div>
+  </div>
+  <div class="page-actions">
+    {{if $.CanAct}}
+    <form method="post" action="/actions/update" class="inline">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="container" value="{{.Name}}">
+      <input type="hidden" name="next" value="{{$.Path}}">
+      <button class="btn primary" type="submit" {{if $.JobRunning}}disabled{{end}}>Update now</button>
+    </form>
+    {{if .CanRollback}}
+    <form method="post" action="/actions/rollback" class="inline">
+      <input type="hidden" name="csrf" value="{{$.CSRF}}">
+      <input type="hidden" name="container" value="{{.Name}}">
+      <input type="hidden" name="next" value="{{$.Path}}">
+      <button class="btn danger" type="submit" data-confirm="Roll {{.Name}} back to the image it ran before its last successful update?" {{if $.JobRunning}}disabled{{end}}>Rollback</button>
+    </form>
+    {{end}}
+    {{else}}
+    <span class="badge muted">read-only</span>
+    {{end}}
+  </div>
+</section>
+
+<div class="grid-2">
+  <section class="panel">
+    <header class="panel-head"><h2>Image</h2></header>
+    <dl class="facts">
+      <dt>Reference</dt><dd class="mono">{{.Image}}</dd>
+      <dt>Image ID</dt><dd class="mono small">{{.ImageID}}</dd>
+      <dt>Digests</dt>
+      <dd class="mono small">
+        {{range .Digests}}<div>{{.}}</div>{{else}}<span class="muted">none recorded</span>{{end}}
+      </dd>
+      <dt>Created</dt><dd>{{datetime .Created}}</dd>
+      <dt>Restarts</dt><dd>{{.RestartCount}}</dd>
+      <dt>Auto-remove</dt><dd>{{if .AutoRemove}}yes{{else}}no{{end}}</dd>
+      <dt>Stop signal</dt><dd class="mono">{{.StopSignal}}</dd>
+    </dl>
+  </section>
+
+  <section class="panel">
+    <header class="panel-head"><h2>Policy</h2></header>
+    <dl class="facts">
+      <dt>Schedule</dt><dd>{{if .Policy.Schedule}}<code>{{.Policy.Schedule}}</code>{{else}}global ({{$.GlobalInterval}}){{end}}</dd>
+      <dt>Automatic rollback</dt><dd>{{if .Policy.Rollback}}<span class="status ok">enabled</span>{{else}}<span class="status muted">disabled</span>{{end}}</dd>
+      <dt>Cleanup old images</dt><dd>{{if .Policy.Cleanup}}yes{{else}}no{{end}}</dd>
+      <dt>Priority</dt><dd>{{.Policy.Priority}}</dd>
+      <dt>Depends on</dt><dd>{{if .Policy.DependsOn}}{{join .Policy.DependsOn ", "}}{{else}}<span class="muted">—</span>{{end}}</dd>
+      <dt>Health probe</dt><dd>{{if .Policy.HealthPort}}{{if .Policy.HealthURL}}HTTP {{.Policy.HealthURL}} on{{else}}TCP{{end}} port {{.Policy.HealthPort}}{{else}}container healthcheck{{end}}</dd>
+      <dt>Stop timeout</dt><dd>{{.Policy.StopTimeout}}s</dd>
+      <dt>Health timeout</dt><dd>{{.Policy.HealthTimeout}}s</dd>
+      <dt>Monitor only</dt><dd>{{if .Policy.MonitorOnly}}yes{{else}}no{{end}}</dd>
+      <dt>Requires approval</dt><dd>{{if .Policy.Approve}}yes{{else}}no{{end}}</dd>
+    </dl>
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <header class="panel-head"><h2>Labels</h2><span class="badge">{{len .Labels}}</span></header>
+    {{if .Labels}}
+    <div class="table-wrap">
+      <table class="table compact">
+        <thead><tr><th>Key</th><th>Value</th></tr></thead>
+        <tbody>
+          {{range .LabelKeys}}
+          <tr><td class="mono small">{{.}}</td><td class="mono small">{{index $.Detail.Labels .}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <p class="empty">No labels.</p>
+    {{end}}
+  </section>
+
+  <section class="panel">
+    <header class="panel-head"><h2>Networks</h2><span class="badge">{{len .Networks}}</span></header>
+    {{if .Networks}}
+    <ul class="plain">
+      {{range .Networks}}<li class="mono">{{.}}</li>{{end}}
+    </ul>
+    {{else}}
+    <p class="empty">No network attachments recorded.</p>
+    {{end}}
+  </section>
+</div>
+
+<section class="panel">
+  <header class="panel-head"><h2>History</h2><a href="/history?container={{.Name}}">Filtered history →</a></header>
+  {{template "historyRows" .History}}
+</section>
+{{end}}
+{{end}}

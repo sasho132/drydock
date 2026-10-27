@@ -1,0 +1,68 @@
+{{define "content"}}
+<section class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <p class="muted">Container update status at a glance. Updates are verified and automatically rolled back when unhealthy.</p>
+  </div>
+</section>
+
+<section class="cards" aria-label="Summary">
+  <div class="card">
+    <div class="card-label">Managed</div>
+    <div class="card-value">{{.Summary.Managed}}</div>
+    <div class="card-sub">of {{.Summary.Total}} containers</div>
+  </div>
+  <div class="card {{if .Summary.Pending}}accent{{end}}">
+    <div class="card-label">Pending updates</div>
+    <div class="card-value">{{.Summary.Pending}}</div>
+    <div class="card-sub">{{if .Summary.Pending}}awaiting action{{else}}nothing detected{{end}}</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Updated · 24h</div>
+    <div class="card-value">{{.Summary.Updated24h}}</div>
+    <div class="card-sub">{{.Summary.Running}} running now</div>
+  </div>
+  <div class="card {{if .Summary.RolledBack24h}}warn{{end}}">
+    <div class="card-label">Rolled back · 24h</div>
+    <div class="card-value">{{.Summary.RolledBack24h}}</div>
+    <div class="card-sub">previous versions restored</div>
+  </div>
+  <div class="card {{if .Summary.Failed24h}}danger{{end}}">
+    <div class="card-label">Failed · 24h</div>
+    <div class="card-value">{{.Summary.Failed24h}}</div>
+    <div class="card-sub">needs attention</div>
+  </div>
+  <div class="card">
+    <div class="card-label">Last run</div>
+    <div class="card-value sm">{{if .Summary.LastRun.IsZero}}never{{else}}{{ago .Summary.LastRun}}{{end}}</div>
+    <div class="card-sub">{{if .Summary.LastRunFor}}{{.Summary.LastRunFor}}{{else}}{{.Summary.Runs}} runs{{end}}</div>
+  </div>
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <h2>Containers</h2>
+    <a href="/containers">View all →</a>
+  </header>
+  {{template "containerTable" .}}
+  {{if .MoreContainers}}<p class="panel-foot muted small">+{{.MoreContainers}} more containers on the <a href="/containers">containers page</a>.</p>{{end}}
+</section>
+
+<div class="grid-2 even">
+  <section class="panel">
+    <header class="panel-head">
+      <h2>Pending approvals</h2>
+      <span class="badge info">{{len .Pending}}</span>
+    </header>
+    {{template "pendingList" .}}
+  </section>
+
+  <section class="panel">
+    <header class="panel-head">
+      <h2>Recent activity</h2>
+      <a href="/history">Full history →</a>
+    </header>
+    {{template "historyList" .}}
+  </section>
+</div>
+{{end}}

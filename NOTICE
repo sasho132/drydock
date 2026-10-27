@@ -1,0 +1,13 @@
+Drydock
+Copyright 2026 sasho
+
+Drydock is an independent, from-scratch implementation of a Docker container
+auto-updater. Its design is informed by the behaviour and documentation of
+Watchtower (https://github.com/containrrr/watchtower), Copyright The
+Watchtower Authors, which is licensed under the Apache License, Version 2.0.
+
+No Watchtower source code is included in this repository.
+
+Watchtower itself is no longer maintained (archived December 2025); Drydock was
+written to carry the idea forward with health-gated updates, automatic
+rollback, persistent history, per-container schedules, and a modern API.

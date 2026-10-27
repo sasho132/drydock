@@ -1,0 +1,47 @@
+services:
+  drydock:
+    image: ghcr.io/sasho/drydock:latest
+    build:
+      context: .
+      args:
+        VERSION: dev
+    container_name: drydock
+    restart: unless-stopped
+
+    # The image defaults to the nonroot user. Reading and writing the Docker
+    # socket normally requires the socket's group, so grant it explicitly:
+    #
+    #   echo "DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)" > .env
+    #
+    # On Docker Desktop the socket is root-owned and group 0 works.
+    # For a quick start, replace the two lines below with: user: "0:0"
+    user: "65532:65532"
+    group_add:
+      - "${DOCKER_GID:-0}"
+
+    environment:
+      DRYDOCK_INTERVAL: 6h
+      DRYDOCK_ROLLBACK: "true"
+      DRYDOCK_CLEANUP: "false"
+      DRYDOCK_STATE_FILE: /var/lib/drydock/state.json
+      # DRYDOCK_API_ENABLED: "true"
+      # DRYDOCK_API_TOKEN: change-me
+      DRYDOCK_LOG_LEVEL: info
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - drydock-data:/var/lib/drydock
+      # Optional: use a config file instead of environment variables.
+      # - ./config.yaml:/etc/drydock/config.yaml:ro
+
+    # ports:
+    #   - "8080:8080"
+
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  drydock-data:

@@ -1,0 +1,14 @@
+.git
+.gitignore
+drydock
+drydock.exe
+*.test
+*.out
+.env
+.env.*
+docs
+scripts
+docker-compose.yml
+README.md
+NOTICE
+.DS_Store

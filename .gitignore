@@ -1,0 +1,17 @@
+# Build output
+/drydock
+/drydock.exe
+*.test
+*.out
+coverage.html
+
+# Local state and secrets
+drydock-state.json
+*.env
+.env
+.env.*
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/

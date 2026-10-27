@@ -1,0 +1,44 @@
+{{define "content"}}
+<section class="page-head">
+  <div>
+    <h1>Containers</h1>
+    <p class="muted">Every container on this Docker host, with the policy Drydock resolved from labels and configuration.</p>
+  </div>
+  <div class="page-actions">
+    <form method="get" action="/containers" class="search">
+      <input type="search" name="q" value="{{.Query}}" placeholder="Filter by name or image…" aria-label="Filter containers">
+      <button class="btn" type="submit">Filter</button>
+      {{if .Query}}<a class="btn ghost" href="/containers">Clear</a>{{end}}
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <header class="panel-head">
+    <h2>{{len .Containers}} container{{if ne (len .Containers) 1}}s{{end}}</h2>
+  </header>
+  {{template "containerTable" .}}
+</section>
+
+<section class="panel">
+  <header class="panel-head"><h2>Container labels</h2></header>
+  <p class="muted small">Labels override the global configuration for a single container. The prefix is <code>{{.LabelPrefix}}</code>.</p>
+  <div class="table-wrap">
+    <table class="table compact">
+      <thead><tr><th>Label</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">{{.LabelPrefix}}.enable</td><td>Opt a container in when <code>label_enable</code> is set, or opt it out with <code>false</code></td></tr>
+        <tr><td class="mono">{{.LabelPrefix}}.monitor-only</td><td>Detect updates but never apply them</td></tr>
+        <tr><td class="mono">{{.LabelPrefix}}.approve</td><td>Record a pending update; apply only when forced</td></tr>
+        <tr><td class="mono">{{.LabelPrefix}}.schedule</td><td>Cron expression or duration for this container</td></tr>
+        <tr><td class="mono">{{.LabelPrefix}}.depends-on</td><td>Comma-separated containers that must update first</td></tr>
+        <tr><td class="mono">{{.LabelPrefix}}.health-port</td><td>TCP port probed after an update</td></tr>
+        <tr><td class="mono">{{.LabelPrefix}}.health-url</td><td>HTTP path probed on the health port</td></tr>
+        <tr><td class="mono">{{.LabelPrefix}}.stop-timeout</td><td>Graceful stop window in seconds or as a duration</td></tr>
+        <tr><td class="mono">{{.LabelPrefix}}.rollback</td><td>Enable or disable automatic rollback</td></tr>
+        <tr><td class="mono">{{.LabelPrefix}}.scope</td><td>Only managed by a Drydock instance with the same scope</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

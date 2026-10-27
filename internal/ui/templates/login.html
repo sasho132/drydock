@@ -1,0 +1,29 @@
+{{define "content"}}
+<div class="login-wrap">
+  <form class="login-card" method="post" action="/login">
+    <div class="login-brand">
+      <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="4.5" r="2.5"></circle>
+        <path d="M12 7v13"></path>
+        <path d="M8 10h8"></path>
+        <path d="M4 13c0 5 3.6 8 8 8s8-3 8-8"></path>
+        <path d="M4 13H2m20 0h-2"></path>
+      </svg>
+      <h1>Drydock</h1>
+    </div>
+    <p class="muted login-sub">Sign in to manage container updates.</p>
+
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label class="field">
+      <span>Username</span>
+      <input type="text" name="username" autocomplete="username" autofocus required>
+    </label>
+    <label class="field">
+      <span>Password</span>
+      <input type="password" name="password" autocomplete="current-password" required>
+    </label>
+    <button class="btn primary wide" type="submit">Sign in</button>
+    <p class="muted small login-hint">Set <code>api.ui.username</code> and <code>api.ui.password</code> to change credentials.</p>
+  </form>
+</div>
+{{end}}

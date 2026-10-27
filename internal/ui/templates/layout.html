@@ -1,0 +1,84 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · Drydock</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='88'%3E%E2%9A%93%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body data-job="{{.JobID}}">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="/" aria-label="Drydock dashboard">
+      <svg class="logo" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="4.5" r="2.5"></circle>
+        <path d="M12 7v13"></path>
+        <path d="M8 10h8"></path>
+        <path d="M4 13c0 5 3.6 8 8 8s8-3 8-8"></path>
+        <path d="M4 13H2m20 0h-2"></path>
+      </svg>
+      <span>Drydock</span>
+    </a>
+
+    {{if not .Login}}
+    <nav class="nav" aria-label="Main">
+      <a href="/" class="{{if eq .Nav "dashboard"}}active{{end}}">Dashboard</a>
+      <a href="/containers" class="{{if eq .Nav "containers"}}active{{end}}">Containers</a>
+      <a href="/history" class="{{if eq .Nav "history"}}active{{end}}">History</a>
+      <a href="/settings" class="{{if eq .Nav "settings"}}active{{end}}">Settings</a>
+    </nav>
+
+    <div class="topbar-actions">
+      {{if .ReadOnly}}<span class="badge muted" title="Set api.ui.password to enable actions">read-only</span>{{end}}
+      {{if .CanAct}}
+      <form method="post" action="/actions/check" class="inline">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button class="btn ghost" type="submit" {{if .JobRunning}}disabled{{end}}>Check</button>
+      </form>
+      <form method="post" action="/actions/update" class="inline">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button class="btn primary" type="submit" data-confirm="Update every managed container now? Unhealthy replacements are rolled back automatically." {{if .JobRunning}}disabled{{end}}>Update all</button>
+      </form>
+      {{end}}
+      {{if .AuthEnabled}}
+      <form method="post" action="/logout" class="inline">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <button class="btn ghost user" type="submit" title="Sign out">{{.User}} ⏻</button>
+      </form>
+      {{end}}
+    </div>
+    {{end}}
+  </div>
+</header>
+
+<main id="main" class="wrap">
+  {{if .ReadOnly}}<div class="banner info"><strong>Read-only dashboard.</strong> Set <code>api.ui.password</code> (or <code>DRYDOCK_UI_PASSWORD</code>) to enable updates and rollbacks.</div>{{end}}
+  {{if .Notice}}<div class="banner ok">{{.Notice}}</div>{{end}}
+  {{if and .Error (ne .Title "Error")}}<div class="banner err">{{.Error}}</div>{{end}}
+
+  {{if .JobID}}
+  <div class="banner job" id="job-banner" data-job-id="{{.JobID}}">
+    <span class="spinner" aria-hidden="true"></span>
+    <span id="job-text">Starting job…</span>
+    <a href="#" id="job-dismiss" class="job-dismiss" hidden>Dismiss</a>
+  </div>
+  {{end}}
+
+  {{template "content" .}}
+</main>
+
+<footer class="footer wrap">
+  <span>Drydock {{.Version}}</span>
+  <span class="sep">·</span>
+  <a href="/settings">Configuration</a>
+  <span class="sep">·</span>
+  <a href="/metrics">Prometheus metrics</a>
+  <span class="sep">·</span>
+  <a href="/v1/containers">Raw API</a>
+</footer>
+</body>
+</html>{{end}}

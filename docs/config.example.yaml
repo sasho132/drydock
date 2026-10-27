@@ -1,0 +1,101 @@
+# Drydock configuration example.
+#
+# Copy to /etc/drydock/config.yaml (or ./drydock.yaml) and adjust.
+# Unknown keys are rejected, so a typo fails fast.
+
+# How often to check when no cron schedule is set.
+interval: 6h
+
+# Alternatively, a cron expression. 5 fields (minute granularity) and
+# 6 fields (with seconds) are both accepted, as is @every / @daily.
+# schedule: "0 4 * * *"
+
+# Only manage containers whose drydock.scope label equals this value.
+# scope: ""
+
+# Isolate multiple drydock instances managing different containers.
+include_stopped: false
+monitor_only: false
+label_enable: false
+label_prefix: drydock
+
+# Graceful shutdown of the old container.
+stop_timeout: 30s
+
+# Maximum parallel updates within one dependency level.
+concurrency: 2
+
+# Remove the replaced image after a successful update.
+cleanup: false
+# Number of previous image versions kept for rollback when cleanup is on.
+# The currently running image is always kept.
+keep_images: 2
+
+# Remove anonymous volumes belonging to the replaced container. Named
+# volumes are never removed.
+remove_volumes: false
+
+# Post-update verification.
+health_timeout: 2m
+settle: 3s
+
+# Restore the previous container automatically when verification fails.
+rollback: true
+
+# Report what would change without pulling or recreating.
+dry_run: false
+
+log_level: info        # debug | info | warn | error
+log_format: text       # text | json
+
+# Persists history, rollback snapshots, and pending approvals.
+# Contains container environment variables: keep it private (0600).
+state_file: /var/lib/drydock/state.json
+
+# docker_host: unix:///var/run/docker.sock
+
+registry:
+  retries: 3
+  timeout: 30s
+  # Only for private registries with self-signed certificates.
+  insecure_skip_verify: false
+  # Only for local test registries served over HTTP.
+  plain_http: false
+  auths:
+    # host:
+    #   username: bot
+    #   password: ${GHCR_TOKEN}
+    # Credentials are also read from Docker's config.json.
+
+api:
+  enabled: false
+  addr: ":8080"
+  # When set, mutating API endpoints require "Authorization: Bearer <token>".
+  token: ""
+  # Embedded web dashboard, served at "/" when the API is enabled.
+  ui:
+    enabled: true
+    username: admin
+    # Leave empty for a read-only dashboard. Prefer setting this through
+    # DRYDOCK_UI_PASSWORD so it does not end up in the config file or `ps`.
+    password: ""
+
+notifications:
+  # - type: slack
+  #   url: https://hooks.slack.com/services/XXX/YYY/ZZZ
+  #   events: [failure, rollback]
+  # - type: webhook
+  #   url: https://example.com/hooks/drydock
+  #   headers:
+  #     Authorization: Bearer secret
+  #   events: [update, failure, rollback]
+  # - type: json
+  #   url: https://example.com/collect
+  []
+
+# Per-container overrides win over labels.
+containers:
+  # postgres:
+  #   monitor_only: true
+  #   schedule: "@every 24h"
+  #   health_timeout: 5m
