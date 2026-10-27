@@ -66,6 +66,26 @@ containers:
 	}
 }
 
+func TestLoadExpandsEnv(t *testing.T) {
+	t.Setenv("REGISTRY_TOKEN", "s3cret-token")
+	path := filepath.Join(t.TempDir(), "drydock.yaml")
+	yaml := "registry:\n  auths:\n    docker.io:\n      username: bot\n      password: ${REGISTRY_TOKEN}\n"
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Registry.Auths["docker.io"].Password; got != "s3cret-token" {
+		t.Errorf("password = %q", got)
+	}
+	// Bare $VAR is intentionally not expanded.
+	if got := expandEnv([]byte("cost is $5")); got != "cost is $5" {
+		t.Errorf("bare dollar changed: %q", got)
+	}
+}
+
 func TestLoadRejectsUnknownFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "bad.yaml")
 	if err := os.WriteFile(path, []byte("intervall: 5m\n"), 0o600); err != nil {

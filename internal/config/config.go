@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -227,18 +228,28 @@ func Load(path string) (*Config, error) {
 	if path == "" {
 		return cfg, nil
 	}
-	f, err := os.Open(path)
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("open config %q: %w", path, err)
 	}
-	defer f.Close()
 
-	dec := yaml.NewDecoder(f)
+	dec := yaml.NewDecoder(strings.NewReader(expandEnv(raw)))
 	dec.KnownFields(true)
 	if err := dec.Decode(cfg); err != nil {
 		return nil, fmt.Errorf("parse config %q: %w", path, err)
 	}
 	return cfg, nil
+}
+
+var envRef = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// expandEnv substitutes ${VAR} references using the process environment.
+// Only the braced form is expanded, so literal "$" characters in passwords
+// are left alone unless they happen to look exactly like ${NAME}.
+func expandEnv(data []byte) string {
+	return envRef.ReplaceAllStringFunc(string(data), func(m string) string {
+		return os.Getenv(m[2 : len(m)-1])
+	})
 }
 
 // Discover returns the first existing default config path, or "".

@@ -41,6 +41,7 @@ services:
       # Empty password = read-only dashboard. Set it to enable update/rollback.
       DRYDOCK_UI_PASSWORD: ${DRYDOCK_UI_PASSWORD:-}
       # DRYDOCK_API_TOKEN: ${DRYDOCK_API_TOKEN:-}
+      # DOCKER_CONFIG: /config   # with the docker config volume below
 
     ports:
       # 127.0.0.1 keeps the dashboard off the network. For LAN access set
@@ -54,6 +55,9 @@ services:
       - drydock-data:/var/lib/drydock
       # Optional: use a config file instead of environment variables.
       # - ./drydock.yaml:/etc/drydock/config.yaml:ro
+      # Optional: reuse Docker's credentials for private registries (only if
+      # config.json stores credentials directly, not via a credsStore helper).
+      # - ${HOME}/.docker/config.json:/config/config.json:ro
 
     read_only: true
     security_opt:

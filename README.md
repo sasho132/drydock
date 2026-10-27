@@ -314,6 +314,17 @@ containers:
 
 See [`docs/config.example.yaml`](docs/config.example.yaml) for the full file.
 
+String values support `${VAR}` expansion from the process environment, so
+secrets can stay out of the file:
+
+```yaml
+registry:
+  auths:
+    docker.io:
+      username: sasho1320
+      password: ${DOCKERHUB_TOKEN}
+```
+
 Configuration is strict: unknown keys are rejected, so typos fail at startup
 instead of silently doing nothing.
 
@@ -350,6 +361,49 @@ Every scalar setting has a `DRYDOCK_*` equivalent: `DRYDOCK_INTERVAL`,
 
 Compose's `com.docker.compose.depends_on` is honoured automatically, so
 Compose stacks update `db → cache → web` without any extra labels.
+
+### Private registries
+
+Drydock's registry client runs inside its own container, so it cannot see the
+host's `docker login`. A private image needs credentials in Drydock's config:
+
+```yaml
+registry:
+  auths:
+    docker.io:
+      username: sasho1320
+      # Docker Hub: use a personal access token (read-only is enough)
+      password: ${DOCKERHUB_TOKEN}
+    ghcr.io:
+      username: sasho132
+      password: ghp_...          # needs read:packages
+```
+
+Docker Hub accepts any of `docker.io`, `registry-1.docker.io`,
+`index.docker.io`, or `https://index.docker.io/v1/` as the key.
+
+Mount the file read-only into the container:
+
+```yaml
+volumes:
+  - ./drydock.yaml:/etc/drydock/config.yaml:ro
+```
+
+Or reuse Docker's own config file when it stores credentials directly:
+
+```yaml
+volumes:
+  - ${HOME}/.docker/config.json:/config/config.json:ro
+environment:
+  DOCKER_CONFIG: /config
+```
+
+Credential helper binaries are deliberately not executed. If `config.json`
+uses `credsStore` (common on Docker Desktop or with `pass`), use
+`registry.auths` instead.
+
+The same credentials are used for the registry digest check **and** for the
+pull handed to the Docker daemon, so private repositories update normally.
 
 ## CLI
 
@@ -472,8 +526,9 @@ it with the digests Docker recorded when the image was pulled:
   digest or the platform manifest digest. This avoids the false "update
   available" results Watchtower produces for multi-arch images.
 - Credentials come from `registry.auths`, then Docker's `config.json`
-  (`auths`, including the `https://index.docker.io/v1/` key). Credential
-  helper binaries are deliberately **not** executed by the daemon.
+  (`auths`, including every Docker Hub alias). Credential helper binaries are
+  deliberately **not** executed by the daemon. See
+  [Private registries](#private-registries).
 - `429` responses honour `Retry-After`, `5xx` and network errors are retried
   with exponential backoff.
 - Digest-pinned references (`repo@sha256:...`) are recognised as immutable and

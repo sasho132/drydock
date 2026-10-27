@@ -37,6 +37,8 @@ COPY --from=build /out/drydock /drydock
 COPY --from=build --chown=65532:65532 /out/state /var/lib/drydock
 
 ENV DRYDOCK_STATE_FILE=/var/lib/drydock/state.json
+# Lets os.UserHomeDir() find ~/.docker/config.json if it is mounted.
+ENV HOME=/home/nonroot
 
 # History and rollback snapshots live here. Mount a volume.
 VOLUME ["/var/lib/drydock"]

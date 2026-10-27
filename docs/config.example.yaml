@@ -62,10 +62,13 @@ registry:
   # Only for local test registries served over HTTP.
   plain_http: false
   auths:
-    # host:
-    #   username: bot
-    #   password: ${GHCR_TOKEN}
-    # Credentials are also read from Docker's config.json.
+    # docker.io:
+    #   username: sasho1320
+    #   password: dckr_pat_xxx          # read-only Docker Hub PAT
+    # ghcr.io:
+    #   username: sasho132
+    #   password: ghp_xxx               # needs read:packages
+    # Credentials are also read from Docker's config.json when mounted.
 
 api:
   enabled: false

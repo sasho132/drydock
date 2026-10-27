@@ -244,13 +244,13 @@ func (c *Client) doWithAuth(ctx context.Context, req *http.Request, host, repo s
 			// one; after that, a 401 is a real authorization failure.
 			if hasCreds && unauthorized == 0 {
 				unauthorized++
-				lastErr = fmt.Errorf("registry %s rejected credentials", host)
+				lastErr = fmt.Errorf("registry %s rejected credentials", displayHost(host))
 				continue
 			}
 			if !hasCreds {
-				return nil, fmt.Errorf("registry %s denied access to %s (the repository may not exist or may be private)", host, repo)
+				return nil, fmt.Errorf("registry %s denied access to %s (no credentials found; the repository may not exist or may be private)", displayHost(host), repo)
 			}
-			return nil, fmt.Errorf("registry %s rejected credentials for %s", host, repo)
+			return nil, fmt.Errorf("registry %s rejected credentials for %s", displayHost(host), repo)
 		case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
 			retryAfter := parseRetryAfter(resp.Header.Get("Retry-After"))
 			resp.Body.Close()
@@ -382,10 +382,14 @@ func (c *Client) DockerAuth(imageRef string) string {
 	if creds.Username == "" && creds.Password == "" && creds.IdentityToken == "" {
 		return ""
 	}
+	serverAddress := host
+	if host == dockerHubDomain {
+		serverAddress = dockerHubAuth
+	}
 	ac := map[string]string{
 		"username":      creds.Username,
 		"password":      creds.Password,
-		"serveraddress": host,
+		"serveraddress": serverAddress,
 	}
 	if creds.IdentityToken != "" {
 		ac["identitytoken"] = creds.IdentityToken
@@ -397,7 +401,9 @@ func (c *Client) DockerAuth(imageRef string) string {
 func (c *Client) credentials(host string) Credentials {
 	keys := []string{host}
 	if host == dockerHubDomain || host == dockerHubAPI {
-		keys = append(keys, dockerHubAuth, "https://index.docker.io/v1/", "index.docker.io")
+		// Docker Hub is addressed as registry-1.docker.io but users
+		// (and Docker's own config.json) use several aliases.
+		keys = append(keys, dockerHubDomain, "index.docker.io", dockerHubAuth)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -412,6 +418,14 @@ func (c *Client) credentials(host string) Credentials {
 		}
 	}
 	return Credentials{}
+}
+
+// displayHost shortens Docker Hub's API host to the name users recognise.
+func displayHost(host string) string {
+	if host == dockerHubAPI {
+		return dockerHubDomain
+	}
+	return host
 }
 
 func (c *Client) hasCredentials(host string) bool {

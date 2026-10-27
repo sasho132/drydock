@@ -151,6 +151,19 @@ func TestParseChallenge(t *testing.T) {
 	}
 }
 
+func TestDockerAuthDockerHub(t *testing.T) {
+	c := newTestClient(map[string]config.Auth{
+		"docker.io": {Username: "bot", Password: "token"},
+	})
+	raw := decodeAuth(t, c.DockerAuth("sasho1320/my-app:latest"))
+	if raw["username"] != "bot" || raw["password"] != "token" {
+		t.Errorf("unexpected auth payload %v", raw)
+	}
+	if raw["serveraddress"] != "https://index.docker.io/v1/" {
+		t.Errorf("serveraddress = %q", raw["serveraddress"])
+	}
+}
+
 func TestDockerAuthUsesConfiguredCredentials(t *testing.T) {
 	c := newTestClient(map[string]config.Auth{
 		"ghcr.io": {Username: "bot", Password: "secret"},
@@ -207,5 +220,68 @@ func TestResolveUnauthorizedWithoutCredentials(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "giving up") {
 		t.Fatalf("401 should not be retried until exhaustion: %v", err)
+	}
+}
+
+func TestDockerHubCredentialAliases(t *testing.T) {
+	// Users write any of these keys for Docker Hub. The digest check contacts
+	// registry-1.docker.io, so every alias must resolve.
+	aliases := []string{
+		"docker.io",
+		"registry-1.docker.io",
+		"index.docker.io",
+		"https://index.docker.io/v1/",
+	}
+	for _, alias := range aliases {
+		c := newTestClient(map[string]config.Auth{alias: {Username: "bot", Password: "token"}})
+		creds := c.credentials("registry-1.docker.io")
+		if creds.Username != "bot" {
+			t.Errorf("credentials configured under %q were not found for registry-1.docker.io", alias)
+		}
+		if !c.hasCredentials("registry-1.docker.io") {
+			t.Errorf("hasCredentials returned false for alias %q", alias)
+		}
+	}
+}
+
+func TestResolveSendsCredentialsToTokenEndpoint(t *testing.T) {
+	var srvURL string
+	var sawBasic bool
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	srvURL = srv.URL
+
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != "bot" || pass != "secret" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		sawBasic = true
+		json.NewEncoder(w).Encode(map[string]string{"token": "private-token"})
+	})
+	mux.HandleFunc("/v2/app/manifests/latest", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer private-token" {
+			w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s/token",service="test"`, srvURL))
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Docker-Content-Digest", "sha256:private")
+		json.NewEncoder(w).Encode(map[string]any{"mediaType": "application/vnd.oci.image.manifest.v1+json"})
+	})
+
+	host := strings.TrimPrefix(srv.URL, "http://")
+	ref := host + "/app:latest"
+	c := newTestClient(map[string]config.Auth{host: {Username: "bot", Password: "secret"}})
+	res, err := c.Resolve(context.Background(), ref, Platform{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sawBasic {
+		t.Error("token endpoint never received basic auth")
+	}
+	if res.Digest != "sha256:private" {
+		t.Errorf("digest = %q", res.Digest)
 	}
 }
