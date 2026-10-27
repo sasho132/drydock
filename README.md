@@ -86,10 +86,12 @@ docker run -d --name drydock-ui \
   drydock
 ```
 
-Open <http://localhost:8080> and sign in as `admin`.
+Open <http://localhost:8080> and sign in as `admin` with the password you
+chose (replace `choose-a-strong-password` above with a real secret).
 
-For LAN access replace `127.0.0.1` with `0.0.0.0` and put a TLS proxy in front.
-Private images need registry credentials — see
+For LAN access, replace `127.0.0.1` with `0.0.0.0`; if the port is reachable
+from the internet, terminate TLS in a reverse proxy and keep the container on
+`127.0.0.1`. Private images need registry credentials — see
 [Private registries](#private-registries). For a server install, the
 [Compose deployment](#deploy-on-a-server) is the recommended path.
 
@@ -273,7 +275,8 @@ override in the config file (which wins over labels).
 ```yaml
 interval: 6h              # default check interval
 # schedule: "0 4 * * *"   # or a cron expression / "@every 6h"
-state_file: /var/lib/drydock/state.json
+state_file: /var/lib/drydock/state.json   # image default; hosts use
+                                        # $XDG_STATE_HOME/drydock/state.json
 
 concurrency: 2            # containers updated in parallel
 stop_timeout: 30s         # graceful stop window
@@ -590,7 +593,7 @@ Further hardening:
 # docker-compose.yml
 services:
   drydock:
-    image: ghcr.io/sasho/drydock:latest
+    image: ghcr.io/sasho132/drydock:latest
     user: "65532:65532"
     group_add:
       - "${DOCKER_GID:-999}"     # group that owns /var/run/docker.sock

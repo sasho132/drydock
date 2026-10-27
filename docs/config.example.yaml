@@ -50,6 +50,8 @@ log_format: text       # text | json
 
 # Persists history, rollback snapshots, and pending approvals.
 # Contains container environment variables: keep it private (0600).
+# The image sets /var/lib/drydock/state.json. Running on a workstation
+# defaults to $XDG_STATE_HOME/drydock/state.json.
 state_file: /var/lib/drydock/state.json
 
 # docker_host: unix:///var/run/docker.sock

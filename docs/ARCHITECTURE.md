@@ -159,6 +159,15 @@ Manual rollback records the state it rolled back *from*, so an operator can
 inspect (or reverse) the operation later.
 
 
+## Self-management
+
+The updater is part of the managed container set unless it is excluded.
+`policy.Select` skips a container when the `drydock.self` label is set, when
+its ID matches the process hostname (Docker defaults a container's hostname to
+its short ID), or when `drydock.enable=false` is present. The Compose file sets
+the label as a belt-and-braces guard. Self-updates are deliberately unsupported:
+replacing the process that is orchestrating the replacement is not atomic.
+
 ## Dashboard and background jobs
 
 The dashboard is server-rendered with `html/template`. Templates and static
