@@ -29,19 +29,39 @@ services:
 
     environment:
       DRYDOCK_STATE_FILE: /var/lib/drydock/state.json
+
+      # Schedule and update policy
       DRYDOCK_INTERVAL: ${DRYDOCK_INTERVAL:-6h}
+      DRYDOCK_SCHEDULE: ${DRYDOCK_SCHEDULE:-}
+      DRYDOCK_SCOPE: ${DRYDOCK_SCOPE:-}
+      DRYDOCK_CONCURRENCY: ${DRYDOCK_CONCURRENCY:-2}
+      DRYDOCK_KEEP_IMAGES: ${DRYDOCK_KEEP_IMAGES:-2}
       DRYDOCK_ROLLBACK: ${DRYDOCK_ROLLBACK:-true}
       DRYDOCK_CLEANUP: ${DRYDOCK_CLEANUP:-false}
-      DRYDOCK_CONCURRENCY: ${DRYDOCK_CONCURRENCY:-2}
+      DRYDOCK_REMOVE_VOLUMES: ${DRYDOCK_REMOVE_VOLUMES:-false}
+      DRYDOCK_MONITOR_ONLY: ${DRYDOCK_MONITOR_ONLY:-false}
+      DRYDOCK_INCLUDE_STOPPED: ${DRYDOCK_INCLUDE_STOPPED:-false}
+      DRYDOCK_LABEL_ENABLE: ${DRYDOCK_LABEL_ENABLE:-false}
+      DRYDOCK_DRY_RUN: ${DRYDOCK_DRY_RUN:-false}
+      DRYDOCK_STOP_TIMEOUT: ${DRYDOCK_STOP_TIMEOUT:-30s}
+      DRYDOCK_HEALTH_TIMEOUT: ${DRYDOCK_HEALTH_TIMEOUT:-2m}
+      DRYDOCK_SETTLE: ${DRYDOCK_SETTLE:-3s}
       DRYDOCK_LOG_LEVEL: ${DRYDOCK_LOG_LEVEL:-info}
+      DRYDOCK_LOG_FORMAT: ${DRYDOCK_LOG_FORMAT:-text}
 
       # Dashboard + JSON API. Loopback-only by default; see the ports section.
       DRYDOCK_API_ENABLED: ${DRYDOCK_API_ENABLED:-true}
+      DRYDOCK_UI_ENABLED: ${DRYDOCK_UI_ENABLED:-true}
       DRYDOCK_UI_USERNAME: ${DRYDOCK_UI_USERNAME:-admin}
       # Empty password = read-only dashboard. Set it to enable update/rollback.
       DRYDOCK_UI_PASSWORD: ${DRYDOCK_UI_PASSWORD:-}
-      # DRYDOCK_API_TOKEN: ${DRYDOCK_API_TOKEN:-}
-      # DOCKER_CONFIG: /config   # with the docker config volume below
+      DRYDOCK_API_TOKEN: ${DRYDOCK_API_TOKEN:-}
+      DRYDOCK_REGISTRY_INSECURE_SKIP_VERIFY: ${DRYDOCK_REGISTRY_INSECURE_SKIP_VERIFY:-false}
+
+      # Variables referenced as ${VAR} inside a mounted drydock.yaml must be
+      # passed through here too, e.g. a private registry token.
+      DOCKERHUB_TOKEN: ${DOCKERHUB_TOKEN:-}
+      # DOCKER_CONFIG: /config        # with the Docker config volume below
 
     ports:
       # 127.0.0.1 keeps the dashboard off the network. For LAN access set

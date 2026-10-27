@@ -78,15 +78,20 @@ Add a dashboard (see [Web dashboard](#web-dashboard)):
 ```bash
 docker run -d --name drydock-ui \
   --group-add 0 \
-  -p 8080:8080 \
+  -p 127.0.0.1:8080:8080 \
   -e DRYDOCK_API_ENABLED=true \
-  -e DRYDOCK_UI_PASSWORD=change-me \
+  -e DRYDOCK_UI_PASSWORD='choose-a-strong-password' \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v drydock-data:/var/lib/drydock \
   drydock
 ```
 
 Open <http://localhost:8080> and sign in as `admin`.
+
+For LAN access replace `127.0.0.1` with `0.0.0.0` and put a TLS proxy in front.
+Private images need registry credentials — see
+[Private registries](#private-registries). For a server install, the
+[Compose deployment](#deploy-on-a-server) is the recommended path.
 
 That is enough: every six hours Drydock checks every running container,
 updates the ones whose tag moved, and rolls back anything that fails to start.
@@ -178,7 +183,7 @@ docker run --rm -v drydock-data:/data -v "$PWD":/backup busybox \
 (`linux/amd64`, `linux/arm64`) to GHCR for every `v*` tag:
 
 ```bash
-git tag v0.1.0 && git push --tags
+git tag v0.2.0 && git push --tags
 ```
 
 Make the GitHub package public, or run `docker login ghcr.io` on the server,
@@ -207,7 +212,9 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 | Dashboard says “read-only” | `DRYDOCK_UI_PASSWORD` is empty |
 | `address already in use` | Change `DRYDOCK_PORT` in `.env` |
 | `manifest unknown` on `docker compose pull` | You are pulling without a published image. Use `up -d --build`, or publish a `v*` tag, set `DRYDOCK_IMAGE`, and log in to GHCR / make the package public |
-| The `drydock` row shows `rejected credentials` | It tried to update itself. Pull the latest Compose file (`drydock.enable: "false"`) and run `docker compose up -d` |
+| The `drydock` row shows `rejected credentials` | An older build tried to update itself. Update Drydock; the Compose service now carries `drydock.enable: "false"` and self-detection is automatic |
+| `denied access ... may be private` for your own image | Drydock has no registry credentials. See [Private registries](#private-registries) |
+| Dashboard unreachable from another machine | It is bound to `127.0.0.1`. Set `DRYDOCK_BIND=0.0.0.0` and open the firewall, or use an SSH tunnel |
 | Rootless Docker | Mount `${XDG_RUNTIME_DIR}/docker.sock` instead of `/var/run/docker.sock` and adjust `DOCKER_GID` |
 
 ## What an update actually does
@@ -246,7 +253,9 @@ For each container whose image digest changed:
 - **No overlapping runs.** The API, scheduler, and manual commands share one
   lock; a container is never updated twice concurrently.
 - **State is written atomically** with mode `0600` (it contains env vars).
-- **Drydock never updates itself** by default. Update it deliberately.
+- **Drydock never updates itself.** Its Compose service carries
+  `drydock.enable=false`, and containers are also matched against Drydock's own
+  hostname/container ID. Update it deliberately.
 
 ## Configuration
 
@@ -296,6 +305,10 @@ api:
   enabled: true
   addr: ":8080"
   token: ""               # required on mutating endpoints when set
+  ui:
+    enabled: true
+    username: admin
+    password: ${DRYDOCK_UI_PASSWORD}   # empty = read-only dashboard
 
 notifications:
   - type: slack
@@ -330,14 +343,21 @@ instead of silently doing nothing.
 
 ### Environment variables
 
-Every scalar setting has a `DRYDOCK_*` equivalent: `DRYDOCK_INTERVAL`,
-`DRYDOCK_SCHEDULE`, `DRYDOCK_STATE_FILE`, `DRYDOCK_CONCURRENCY`,
-`DRYDOCK_CLEANUP`, `DRYDOCK_ROLLBACK`, `DRYDOCK_DRY_RUN`,
-`DRYDOCK_LABEL_ENABLE`, `DRYDOCK_MONITOR_ONLY`, `DRYDOCK_INCLUDE_STOPPED`,
-`DRYDOCK_STOP_TIMEOUT`, `DRYDOCK_HEALTH_TIMEOUT`, `DRYDOCK_SETTLE`,
-`DRYDOCK_LOG_LEVEL`, `DRYDOCK_LOG_FORMAT`, `DRYDOCK_API_ENABLED`,
-`DRYDOCK_API_ADDR`, `DRYDOCK_API_TOKEN`, `DRYDOCK_REGISTRY_INSECURE_SKIP_VERIFY`.
+Common settings have a `DRYDOCK_*` equivalent: `DRYDOCK_CONFIG`,
+`DRYDOCK_INTERVAL`, `DRYDOCK_SCHEDULE`, `DRYDOCK_SCOPE`,
+`DRYDOCK_STATE_FILE`, `DRYDOCK_CONCURRENCY`, `DRYDOCK_KEEP_IMAGES`,
+`DRYDOCK_CLEANUP`, `DRYDOCK_REMOVE_VOLUMES`, `DRYDOCK_ROLLBACK`,
+`DRYDOCK_DRY_RUN`, `DRYDOCK_LABEL_ENABLE`, `DRYDOCK_LABEL_PREFIX`,
+`DRYDOCK_MONITOR_ONLY`, `DRYDOCK_INCLUDE_STOPPED`, `DRYDOCK_STOP_TIMEOUT`,
+`DRYDOCK_HEALTH_TIMEOUT`, `DRYDOCK_SETTLE`, `DRYDOCK_LOG_LEVEL`,
+`DRYDOCK_LOG_FORMAT`, `DRYDOCK_API_ENABLED`, `DRYDOCK_API_ADDR`,
+`DRYDOCK_API_TOKEN`, `DRYDOCK_UI_ENABLED`, `DRYDOCK_UI_USERNAME`,
+`DRYDOCK_UI_PASSWORD`, `DRYDOCK_REGISTRY_INSECURE_SKIP_VERIFY`.
 `DOCKER_HOST` and `DRYDOCK_DOCKER_HOST` select the daemon.
+
+Registry `auths`, notifications, and per-container overrides are config-file
+only. Any `${VAR}` used inside the config file is expanded from the container
+environment, so tokens can be passed with `-e` or Compose `environment`.
 
 ### Container labels
 
@@ -380,7 +400,21 @@ registry:
 ```
 
 Docker Hub accepts any of `docker.io`, `registry-1.docker.io`,
-`index.docker.io`, or `https://index.docker.io/v1/` as the key.
+`index.docker.io`, or `https://index.docker.io/v1/` as the key. The
+`${DOCKERHUB_TOKEN}` reference is expanded when the config file is loaded, so
+pass it through Compose rather than committing it:
+
+```yaml
+services:
+  drydock:
+    environment:
+      DOCKERHUB_TOKEN: ${DOCKERHUB_TOKEN}
+```
+
+```bash
+# .env (chmod 600)
+DOCKERHUB_TOKEN=dckr_pat_...
+```
 
 Mount the file read-only into the container:
 
@@ -546,7 +580,9 @@ What Drydock does to reduce that risk:
 - The state file is `0600` and written atomically.
 - Health probes are restricted to the container's own IP and path, preventing
   label-driven SSRF.
-- Drydock does not update its own container.
+- Drydock does not update its own container: the Compose service is labelled
+  `drydock.enable=false`, and self-detection compares container IDs with the
+  process hostname.
 
 Further hardening:
 

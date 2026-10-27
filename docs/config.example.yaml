@@ -64,7 +64,7 @@ registry:
   auths:
     # docker.io:
     #   username: sasho1320
-    #   password: dckr_pat_xxx          # read-only Docker Hub PAT
+    #   password: ${DOCKERHUB_TOKEN}    # read-only Docker Hub PAT
     # ghcr.io:
     #   username: sasho132
     #   password: ghp_xxx               # needs read:packages
@@ -79,9 +79,9 @@ api:
   ui:
     enabled: true
     username: admin
-    # Leave empty for a read-only dashboard. Prefer setting this through
-    # DRYDOCK_UI_PASSWORD so it does not end up in the config file or `ps`.
-    password: ""
+    # Leave empty for a read-only dashboard. ${VAR} is expanded from the
+    # container environment at load time.
+    password: ${DRYDOCK_UI_PASSWORD}
 
 notifications:
   # - type: slack
