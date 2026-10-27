@@ -1,41 +1,52 @@
+name: drydock
+
 services:
   drydock:
-    image: ghcr.io/sasho/drydock:latest
+    # Built locally by default. Set DRYDOCK_IMAGE in .env to use a published
+    # image instead (see README: "Deploy on a server").
+    image: ${DRYDOCK_IMAGE:-drydock:latest}
     build:
       context: .
       args:
-        VERSION: dev
+        VERSION: ${DRYDOCK_VERSION:-dev}
+        COMMIT: ${DRYDOCK_COMMIT:-unknown}
+
     container_name: drydock
     restart: unless-stopped
 
-    # The image defaults to the nonroot user. Reading and writing the Docker
-    # socket normally requires the socket's group, so grant it explicitly:
-    #
-    #   echo "DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)" > .env
-    #
-    # On Docker Desktop the socket is root-owned and group 0 works.
-    # For a quick start, replace the two lines below with: user: "0:0"
+    # The image runs as the nonroot user, so it needs the group that owns the
+    # Docker socket. Set DOCKER_GID in .env (see .env.example).
     user: "65532:65532"
     group_add:
       - "${DOCKER_GID:-0}"
 
     environment:
-      DRYDOCK_INTERVAL: 6h
-      DRYDOCK_ROLLBACK: "true"
-      DRYDOCK_CLEANUP: "false"
       DRYDOCK_STATE_FILE: /var/lib/drydock/state.json
-      # DRYDOCK_API_ENABLED: "true"
-      # DRYDOCK_API_TOKEN: change-me
-      DRYDOCK_LOG_LEVEL: info
+      DRYDOCK_INTERVAL: ${DRYDOCK_INTERVAL:-6h}
+      DRYDOCK_ROLLBACK: ${DRYDOCK_ROLLBACK:-true}
+      DRYDOCK_CLEANUP: ${DRYDOCK_CLEANUP:-false}
+      DRYDOCK_CONCURRENCY: ${DRYDOCK_CONCURRENCY:-2}
+      DRYDOCK_LOG_LEVEL: ${DRYDOCK_LOG_LEVEL:-info}
+
+      # Dashboard + JSON API. Loopback-only by default; see the ports section.
+      DRYDOCK_API_ENABLED: ${DRYDOCK_API_ENABLED:-true}
+      DRYDOCK_UI_USERNAME: ${DRYDOCK_UI_USERNAME:-admin}
+      # Empty password = read-only dashboard. Set it to enable update/rollback.
+      DRYDOCK_UI_PASSWORD: ${DRYDOCK_UI_PASSWORD:-}
+      # DRYDOCK_API_TOKEN: ${DRYDOCK_API_TOKEN:-}
+
+    ports:
+      # 127.0.0.1 keeps the dashboard off the network. For LAN access set
+      # DRYDOCK_BIND=0.0.0.0 (use a TLS reverse proxy if it faces the internet),
+      # or reach it through an SSH tunnel:
+      #   ssh -L 8080:127.0.0.1:8080 user@server
+      - "${DRYDOCK_BIND:-127.0.0.1}:${DRYDOCK_PORT:-8080}:8080"
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - drydock-data:/var/lib/drydock
       # Optional: use a config file instead of environment variables.
-      # - ./config.yaml:/etc/drydock/config.yaml:ro
-
-    # ports:
-    #   - "8080:8080"
+      # - ./drydock.yaml:/etc/drydock/config.yaml:ro
 
     read_only: true
     security_opt:
@@ -43,5 +54,12 @@ services:
     cap_drop:
       - ALL
 
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 volumes:
   drydock-data:
+    name: drydock-data

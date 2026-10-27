@@ -104,6 +104,109 @@ docker run --rm \
 On Linux, replace `--group-add 0` with
 `--group-add "$(stat -c '%g' /var/run/docker.sock)"`.
 
+## Deploy on a server
+
+The Compose file is production-shaped: nonroot user, read-only root filesystem,
+all capabilities dropped, state on a named volume, log rotation, and the
+dashboard bound to loopback by default.
+
+### 1. Push the latest changes
+
+```bash
+cd drydock
+git add .
+git commit -m "Server-ready compose, env template, image publishing"
+git push
+```
+
+`.env`, the binary, and state files are git-ignored.
+
+### 2. Install on the server
+
+Prerequisites: Docker Engine + Compose plugin, Git.
+
+```bash
+git clone git@github.com:sasho132/drydock.git
+cd drydock
+
+cp .env.example .env
+# Linux: give the container the group that owns the socket
+sed -i "s|^DOCKER_GID=.*|DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)|" .env
+$EDITOR .env                # set DRYDOCK_UI_PASSWORD
+chmod 600 .env
+
+# Optional: report what would change, without changing anything
+docker compose run --rm drydock check
+
+# Build and start
+docker compose up -d --build
+docker compose logs -f drydock
+```
+
+The dashboard listens on `127.0.0.1:8080` by default. Reach it through an SSH
+tunnel:
+
+```bash
+ssh -L 8080:127.0.0.1:8080 user@server
+# open http://localhost:8080
+```
+
+For LAN access set `DRYDOCK_BIND=0.0.0.0` in `.env` (use a TLS reverse proxy if
+it is reachable from the internet). Sign in as `admin` with
+`DRYDOCK_UI_PASSWORD`; an empty password leaves the dashboard read-only.
+
+### 3. Update Drydock itself
+
+```bash
+cd drydock
+git pull
+docker compose up -d --build
+```
+
+History and rollback snapshots live in the `drydock-data` volume and survive
+rebuilds:
+
+```bash
+docker run --rm -v drydock-data:/data -v "$PWD":/backup busybox \
+  tar czf /backup/drydock-state.tgz -C /data .
+```
+
+### Using a prebuilt image
+
+`.github/workflows/publish.yml` publishes multi-arch images
+(`linux/amd64`, `linux/arm64`) to GHCR for every `v*` tag:
+
+```bash
+git tag v0.1.0 && git push --tags
+```
+
+Make the GitHub package public, or run `docker login ghcr.io` on the server,
+then switch the image in `.env` instead of building on the server:
+
+```bash
+# .env
+DRYDOCK_IMAGE=ghcr.io/sasho132/drydock:latest
+
+docker compose pull
+docker compose up -d
+```
+
+Or build and push from your machine with `docker buildx`:
+
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t ghcr.io/sasho132/drydock:latest --push .
+```
+
+### Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| `permission denied ... docker.sock` | `DOCKER_GID` does not match the socket's group |
+| Dashboard says “read-only” | `DRYDOCK_UI_PASSWORD` is empty |
+| `address already in use` | Change `DRYDOCK_PORT` in `.env` |
+| Rootless Docker | Mount `${XDG_RUNTIME_DIR}/docker.sock` instead of `/var/run/docker.sock` and adjust `DOCKER_GID` |
+
 ## What an update actually does
 
 For each container whose image digest changed:
