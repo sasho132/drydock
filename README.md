@@ -16,12 +16,10 @@ rolls back when it is not.**
 
 ---
 
-Watchtower was the tool everyone reached for, and it is now
-[unmaintained](https://github.com/containrrr/watchtower/discussions/2135).
-Drydock is a from-scratch successor built around the one thing Watchtower never
-did: **a failed update should never leave your service down.** If the new
-container crashes, fails its healthcheck, or does not answer its health port,
-Drydock puts the previous container back and tells you why.
+Drydock is built around one rule: **a failed update should never leave your
+service down.** If the new container crashes, fails its healthcheck, or does
+not answer its health port, Drydock puts the previous container back and tells
+you why.
 
 ```
 ┌──────────┐   pull    ┌───────────┐  verify  ┌────────────┐
@@ -33,24 +31,21 @@ Drydock puts the previous container back and tells you why.
                                    └───────────┘
 ```
 
-## Why not just use Watchtower?
+## Highlights
 
-| | Watchtower | Drydock |
-|---|---|---|
-| Project status | Archived Dec 2025 | Actively developed |
-| Failed update | Old container already gone | **Automatic rollback**, verified |
-| Health verification | None | Docker healthcheck, TCP/HTTP probe, crash-loop detection |
-| History | In-memory, lost on restart | Persistent JSON store with config snapshots |
-| Manual rollback | Not possible | `drydock rollback <container>` |
-| Scheduling | One global cron | Per-container schedules via labels |
-| Dependencies | Links only | Links + `depends-on` + Compose `depends_on`, cycle detection |
-| TLS to registries | `InsecureSkipVerify: true` hardcoded | Verification on by default, opt-out per registry |
-| Multi-arch digests | Compares index digest only | Compares index **and** platform manifest digest |
-| Rate limits | Fails on 429 | Honours `Retry-After`, exponential backoff |
-| Config | ~70 flags | YAML file + labels + env + flags, typo-safe |
-| Observability | `/metrics` + logs | Structured logs, Prometheus metrics, JSON API |
-| Web UI | None | Embedded dashboard with live job status and rollback |
-| Updates | Serial | Dependency-aware, concurrent within a level |
+| Capability | What it gives you |
+|---|---|
+| Verified updates | Docker healthcheck, TCP/HTTP probe, crash-loop detection |
+| Automatic rollback | Previous container restored when the new one fails |
+| Manual rollback | `drydock rollback <container>` restores a previous image ID |
+| Persistent history | Before/after image IDs and config snapshots in a JSON store |
+| Flexible scheduling | Global interval or cron, plus per-container schedules |
+| Dependency-aware | Links, `depends-on`, Compose `depends_on`, cycle detection |
+| Registry-aware | Multi-arch digest matching, 429 backoff, TLS verification, private auth |
+| Config as code | Strict YAML, labels, environment variables, and flags |
+| Observability | Structured logs, Prometheus metrics, and a JSON API |
+| Embedded dashboard | Live jobs, per-container actions, and an audit trail |
+| Concurrency | Dependency levels updated in parallel, safely |
 
 ## Quick start
 
@@ -562,8 +557,8 @@ it with the digests Docker recorded when the image was pulled:
 
 - For a multi-arch image it selects the manifest matching the container's
   `os/architecture/variant`, and accepts a match against **either** the index
-  digest or the platform manifest digest. This avoids the false "update
-  available" results Watchtower produces for multi-arch images.
+  digest or the platform manifest digest. This avoids false "update available"
+  results when a registry exposes both an index and platform manifests.
 - Credentials come from `registry.auths`, then Docker's `config.json`
   (`auths`, including every Docker Hub alias). Credential helper binaries are
   deliberately **not** executed by the daemon. See
@@ -735,17 +730,6 @@ Not implemented yet (honest list):
 - Custom notification templates beyond the built-in sinks
 - Dashboard settings editing (configuration stays file/env based by design)
 
-## Migrating from Watchtower
-
-See [`docs/MIGRATING-FROM-WATCHTOWER.md`](docs/MIGRATING-FROM-WATCHTOWER.md).
-The short version: replace `com.centurylinklabs.watchtower.*` labels with
-`drydock.*`, map `--schedule`/`--interval`/`--cleanup` to the equivalents below,
-and point the state volume at `/var/lib/drydock`.
-
 ## License
 
 Apache-2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
-
-Drydock is an independent implementation inspired by
-[Watchtower](https://github.com/containrrr/watchtower); no Watchtower source
-code is included.
