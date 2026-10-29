@@ -47,7 +47,7 @@
       {{if .AuthEnabled}}
       <form method="post" action="/logout" class="inline">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
-        <button class="btn ghost user" type="submit" title="Sign out">{{.User}} ⏻</button>
+        <button class="btn ghost user" type="submit" title="Sign out" aria-label="Sign out"><span class="user-name">{{.User}}</span> ⏻</button>
       </form>
       {{end}}
     </div>
@@ -56,14 +56,14 @@
 </header>
 
 <main id="main" class="wrap">
-  {{if .ReadOnly}}<div class="banner info"><strong>Read-only dashboard.</strong> Set <code>api.ui.password</code> (or <code>DRYDOCK_UI_PASSWORD</code>) to enable updates and rollbacks.</div>{{end}}
-  {{if .Notice}}<div class="banner ok">{{.Notice}}</div>{{end}}
-  {{if and .Error (ne .Title "Error")}}<div class="banner err">{{.Error}}</div>{{end}}
+  {{if .ReadOnly}}<div class="banner info"><div class="banner-text"><strong>Read-only dashboard.</strong> Set <code>api.ui.password</code> (or <code>DRYDOCK_UI_PASSWORD</code>) to enable updates and rollbacks.</div></div>{{end}}
+  {{if .Notice}}<div class="banner ok"><div class="banner-text">{{.Notice}}</div></div>{{end}}
+  {{if .Error}}<div class="banner err"><div class="banner-text">{{.Error}}</div></div>{{end}}
 
   {{if .JobID}}
   <div class="banner job" id="job-banner" data-job-id="{{.JobID}}">
     <span class="spinner" aria-hidden="true"></span>
-    <span id="job-text">Starting job…</span>
+    <span id="job-text" class="banner-text">Starting job…</span>
     <a href="#" id="job-dismiss" class="job-dismiss" hidden>Dismiss</a>
   </div>
   {{end}}

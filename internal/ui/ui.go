@@ -59,7 +59,7 @@ const (
 	sessionTTL    = 12 * time.Hour
 )
 
-var pages = []string{"dashboard", "containers", "container", "history", "settings", "login"}
+var pages = []string{"dashboard", "containers", "container", "history", "settings", "login", "error"}
 
 // The production engine must satisfy the dashboard interface.
 var _ Service = (*engine.Engine)(nil)
@@ -277,11 +277,15 @@ func (s *Server) settings(w http.ResponseWriter, r *http.Request, sess *session)
 
 func (s *Server) fail(w http.ResponseWriter, r *http.Request, v view, msg string) {
 	v.Error = msg
-	v.Title = "Error"
 	if v.Status == 0 {
 		v.Status = http.StatusInternalServerError
 	}
-	s.render(w, r, "dashboard", v)
+	if v.Status == http.StatusNotFound {
+		v.Title = "Not found"
+	} else {
+		v.Title = "Error"
+	}
+	s.render(w, r, "error", v)
 }
 
 // --- auth ------------------------------------------------------------------

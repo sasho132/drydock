@@ -1,6 +1,6 @@
 {{define "containerTable"}}
 <div class="table-wrap">
-  <table class="table">
+  <table class="table responsive">
     <thead>
       <tr>
         <th scope="col">Container</th>
@@ -14,24 +14,24 @@
     <tbody>
       {{range .Containers}}
       <tr>
-        <td>
+        <td data-label="Container">
           <a class="name" href="/containers/view?name={{.Name}}">{{.Name}}</a>
           {{if .Pinned}}<span class="badge" title="Digest-pinned: the tag can never move">pinned</span>{{end}}
         </td>
-        <td class="mono small">{{.Image}}</td>
-        <td>
+        <td data-label="Image" class="mono small">{{.Image}}</td>
+        <td data-label="State">
           <span class="status {{if .Running}}ok{{else}}muted{{end}}">{{.Status}}</span>
           {{if ne .Health "none"}}<span class="status {{healthClass .Health}}">{{.Health}}</span>{{end}}
         </td>
-        <td class="chips">
+        <td data-label="Policy" class="chips">
           {{if .Managed}}<span class="badge">managed</span>{{else}}<span class="badge muted">unmanaged</span>{{end}}
           {{if .MonitorOnly}}<span class="badge warn">monitor</span>{{end}}
           {{if .Approve}}<span class="badge info">approval</span>{{end}}
         </td>
-        <td class="muted small last-change">
+        <td data-label="Last change" class="muted small last-change">
           {{if .LastTime.IsZero}}<span class="muted">—</span>{{else}}<span class="status {{statusClass .LastStatus}}">{{.LastStatus}}</span> <span title="{{datetime .LastTime}}">{{ago .LastTime}}</span>{{end}}
         </td>
-        <td class="right actions">
+        <td data-label="Actions" class="right actions">
           {{if $.CanAct}}
             <form method="post" action="/actions/update" class="inline">
               <input type="hidden" name="csrf" value="{{$.CSRF}}">

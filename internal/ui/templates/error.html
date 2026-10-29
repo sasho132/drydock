@@ -1,0 +1,16 @@
+{{define "content"}}
+<section class="page-head">
+  <div>
+    <h1>{{if eq .Status 404}}Not found{{else}}Something went wrong{{end}}</h1>
+    <p class="muted">
+      {{if eq .Status 404}}That page or container does not exist.
+      {{else}}The request could not be completed. Check the Drydock logs for details.{{end}}
+    </p>
+  </div>
+</section>
+
+<div class="page-actions">
+  <a class="btn" href="/">Back to dashboard</a>
+  <a class="btn ghost" href="/containers">Containers</a>
+</div>
+{{end}}

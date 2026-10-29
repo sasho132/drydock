@@ -112,7 +112,7 @@ func TestDashboardRenders(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Dashboard", "web", "Pending approvals", "Recent activity", "Rollback"} {
+	for _, want := range []string{"Dashboard", "web", "Pending approvals", "Recent activity", "Rollback", "table responsive", `data-label="Container"`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)
 		}
@@ -291,6 +291,9 @@ func TestContainerDetail(t *testing.T) {
 	s.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("missing container status = %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "Not found") {
+		t.Errorf("missing container error page: %s", rec.Body.String())
 	}
 }
 

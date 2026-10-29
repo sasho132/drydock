@@ -501,6 +501,8 @@ What you get:
 - **Settings** — the effective configuration with every secret redacted.
 - **Live jobs** — checks, updates, and rollbacks run in the background; the
   banner polls `/v1/jobs/{id}` and refreshes the page when the job finishes.
+- **Responsive** — on phones and tablets the container table becomes labelled
+  cards; filters, banners, and action buttons stack instead of overflowing.
 
 ### Authentication and safety
 
