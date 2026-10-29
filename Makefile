@@ -11,7 +11,7 @@ LDFLAGS := -s -w \
   -X $(MODULE)/internal/version.Commit=$(COMMIT) \
   -X $(MODULE)/internal/version.Date=$(DATE)
 
-.PHONY: all build install test test-race vet fmt fmt-check check docker smoke clean help
+.PHONY: all build install dev test test-race vet fmt fmt-check check docker smoke clean help
 
 all: check build
 
@@ -20,6 +20,12 @@ build: ## Build the binary into ./drydock
 
 install: ## Install into GOBIN
 	CGO_ENABLED=0 go install -trimpath -ldflags "$(LDFLAGS)" .
+
+dev: build ## Run from source with debug logs and a loopback dashboard (ONLY=<name> to restrict)
+	DRYDOCK_LOG_LEVEL=debug \
+	DRYDOCK_STATE_FILE=./drydock-state.json \
+	./$(BINARY) run --api --api-addr 127.0.0.1:8080 --monitor-only \
+	  $(if $(ONLY),--only $(ONLY),)
 
 test: ## Run unit tests
 	go test ./...

@@ -607,19 +607,102 @@ For a stricter setup, point `DOCKER_HOST` at a read/write socket proxy
 (e.g. [`tecnativa/docker-socket-proxy`](https://github.com/Tecnativa/docker-socket-proxy)
 with `CONTAINERS=1`, `IMAGES=1`, `NETWORKS=1`, `POST=1`).
 
-## Building
+## Development
+
+Requirements: Go 1.25+, Docker (Engine or Docker Desktop), GNU Make, and Git.
+
+On Linux, make sure your user can reach the Docker socket, then re-login:
 
 ```bash
-make build      # ./drydock
-make test       # unit tests
-make test-race
-make docker     # container image
-make smoke      # end-to-end test against your local Docker daemon
+sudo usermod -aG docker "$USER"
 ```
 
-Requires Go 1.25+ and, for container/smoke targets, Docker.
+### Build and run from source
 
-## Project layout
+```bash
+git clone git@github.com:sasho132/drydock.git
+cd drydock
+go mod download
+make check        # gofmt check, go vet, unit tests
+make build        # ./drydock
+```
+
+Running the binary on the host talks to your Docker daemon directly and sees
+**every** container. For development, restrict it to a disposable target:
+
+```bash
+# disposable test container
+docker run -d --name drydock-dev alpine:3.20 sleep 3600
+
+# report only, changes nothing
+go run . check --only drydock-dev --json
+
+# dashboard on loopback with actions enabled and a throwaway state file
+DRYDOCK_STATE_FILE=./drydock-state.json \
+DRYDOCK_UI_PASSWORD=dev \
+go run . run --api --api-addr 127.0.0.1:8080 --only drydock-dev
+# open http://127.0.0.1:8080  (admin / dev)
+
+# exercise the real update path
+go run . update --only drydock-dev
+
+# clean up
+docker rm -f drydock-dev
+rm -f drydock-state.json
+```
+
+Or use the Make target, which monitors everything without changing anything:
+
+```bash
+make dev                       # debug logs, loopback dashboard, monitor-only
+make dev ONLY=drydock-dev      # restrict to one container
+```
+
+`--only` accepts a container name, ID, or prefix and can be repeated.
+`--monitor-only` records pending updates instead of applying them.
+`DRYDOCK_STATE_FILE` keeps development history out of your real
+`~/.local/state/drydock` file; `./drydock-state.json` is git-ignored.
+
+### Development loop
+
+- `go run . <command>` is usually fast enough; `make build` gives you
+  `./drydock` for repeated runs.
+- Dashboard templates and static assets are embedded with `go:embed`.
+  Restart the process after editing anything under `internal/ui/`.
+- `--log-level debug` (or `DRYDOCK_LOG_LEVEL=debug`) shows registry and
+  decision details.
+- If port 8080 is taken, use `--api-addr 127.0.0.1:18080`.
+- `make check` before committing; `make test-race` for concurrency changes.
+
+### Test targets
+
+```bash
+make test                              # unit tests
+go test -run TestRun -v ./internal/engine/
+go test ./internal/registry/ -v
+make test-race
+make smoke                             # real Docker: update + rollback
+make docker                            # container image
+```
+
+`make smoke` starts a temporary private registry and containers on port 5055,
+runs check → update → failed update → rollback → manual rollback, then removes
+everything. It is the best validation for changes to the update path.
+
+### Test the container and Compose file
+
+To run the same setup as production:
+
+```bash
+cp .env.example .env
+# set DOCKER_GID (Linux) and DRYDOCK_UI_PASSWORD
+docker compose up -d --build
+docker compose logs -f drydock
+# dashboard: http://127.0.0.1:8080 (or via SSH tunnel)
+docker compose down
+```
+
+### Project layout
 
 ```
 cmd/                 CLI and dependency wiring

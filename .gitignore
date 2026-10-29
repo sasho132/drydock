@@ -5,8 +5,10 @@
 *.out
 coverage.html
 
-# Local state and secrets
+# Local state, configs, and secrets
 drydock-state.json
+drydock.dev.yaml
+*.local.yaml
 *.env
 .env
 .env.*
