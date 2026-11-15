@@ -363,7 +363,7 @@ environment, so tokens can be passed with `-e` or Compose `environment`.
 |---|---|---|
 | `drydock.enable` | `true` | Managed? In `label_enable` mode, `true` is required |
 | `drydock.monitor-only` | config | Detect updates, never apply |
-| `drydock.approve` | `false` | Record a pending update; apply only with `--force` |
+| `drydock.approve` | `false` | Record a pending update; apply only with `--force` or the dashboard's **Approve & update** |
 | `drydock.no-pull` | `false` | Do not pull automatically |
 | `drydock.schedule` | config | Per-container cron/duration |
 | `drydock.depends-on` | – | Comma-separated container names that must update first |
@@ -487,8 +487,9 @@ api:
 What you get:
 
 - **Dashboard** — managed/pending/updated/failed/rollback counters, the
-  container table with per-container **Update** and **Rollback** buttons,
-  pending approvals, and recent activity.
+  container table with per-container **Update**/**Approve** and **Rollback**
+  buttons, pending approvals, and recent activity. **Approve & update** applies
+  an update that `drydock.approve` would otherwise hold back.
 - **Containers** — filterable list and a detail page with image IDs, repo
   digests, labels, networks, the fully resolved policy, and per-container
   history.

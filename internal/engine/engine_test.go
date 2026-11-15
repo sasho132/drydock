@@ -236,6 +236,28 @@ func TestRunApprovalRequiresForce(t *testing.T) {
 	if report.Outcomes[0].Status != state.StatusUpdated {
 		t.Fatalf("expected update when forced, got %s", report.Outcomes[0].Status)
 	}
+	if got := len(h.store.Pending()); got != 0 {
+		t.Fatalf("pending after forced update = %d", got)
+	}
+}
+
+func TestRunUpToDateClearsStalePending(t *testing.T) {
+	h := newHarness(t, testContainer("web", "app:latest", "sha256:old", "sha256:aaa", nil))
+	h.resolver.result = registry.Result{Digest: "sha256:aaa"}
+	if err := h.store.SetPending(state.Pending{Container: "web", Image: "app:latest"}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := h.engine.Run(context.Background(), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Outcomes[0].Status != state.StatusUpToDate {
+		t.Fatalf("status = %s", report.Outcomes[0].Status)
+	}
+	if got := len(h.store.Pending()); got != 0 {
+		t.Fatalf("stale pending entry survived: %d", got)
+	}
 }
 
 func TestRunRollsBackOnFailure(t *testing.T) {
@@ -297,6 +319,9 @@ func TestRollbackUsesLastSnapshot(t *testing.T) {
 	if err := h.store.Append(state.Entry{Container: "web", Status: state.StatusUpdated, Snapshot: snap}); err != nil {
 		t.Fatal(err)
 	}
+	if err := h.store.SetPending(state.Pending{Container: "web", Image: "app:latest"}); err != nil {
+		t.Fatal(err)
+	}
 
 	out, err := h.engine.Rollback(context.Background(), "web")
 	if err != nil {
@@ -307,6 +332,9 @@ func TestRollbackUsesLastSnapshot(t *testing.T) {
 	}
 	if h.docker.rollbackCall != 1 {
 		t.Errorf("rollback calls = %d", h.docker.rollbackCall)
+	}
+	if got := len(h.store.Pending()); got != 0 {
+		t.Fatalf("pending after rollback = %d", got)
 	}
 }
 

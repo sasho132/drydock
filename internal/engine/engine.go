@@ -251,6 +251,9 @@ func (e *Engine) process(ctx context.Context, p policy.Policy, opts Options) (ou
 	if digestsMatch(c.LocalDigests(), remote) {
 		e.metrics.IncScan("up_to_date")
 		_ = e.store.TrackImage(c.Name(), c.ImageID())
+		// The image already matches the registry, so any pending record for
+		// this container is stale (for example after an external update).
+		_ = e.store.ClearPending(c.Name())
 		return finish(state.StatusUpToDate, "", nil)
 	}
 	e.metrics.IncScan("update_available")
@@ -434,6 +437,9 @@ func (e *Engine) Rollback(ctx context.Context, name string) (Outcome, error) {
 	// Keep the state we rolled back *from* so the operation can be inspected
 	// (and, if desired, reversed) later.
 	e.recordWithSnapshot(current, out, &preRollback, state.StatusRolledBack, out.Message)
+	// The update that produced this pending entry is no longer applied, so
+	// the stale approval must not linger on the dashboard.
+	_ = e.store.ClearPending(current.Name())
 	e.metrics.IncRollback()
 	e.metrics.IncUpdate(string(state.StatusRolledBack))
 	e.log.Info("container rolled back", "container", name, "image", short(entry.Snapshot.ImageID))

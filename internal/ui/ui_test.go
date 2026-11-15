@@ -112,7 +112,7 @@ func TestDashboardRenders(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"Dashboard", "web", "Pending approvals", "Recent activity", "Rollback", "table responsive", `data-label="Container"`} {
+	for _, want := range []string{"Dashboard", "web", "Pending approvals", "Recent activity", "Rollback", "table responsive", `data-label="Container"`, "Approve &amp; update"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)
 		}
@@ -236,6 +236,33 @@ func TestActionRequiresCSRF(t *testing.T) {
 	}
 	if svc.startCalls != 1 || svc.startKind != engine.JobUpdate {
 		t.Fatalf("start calls = %d kind = %s", svc.startCalls, svc.startKind)
+	}
+	if len(svc.startOpts.Only) != 1 || svc.startOpts.Only[0] != "web" {
+		t.Errorf("options = %+v", svc.startOpts)
+	}
+	if svc.startOpts.Force {
+		t.Error("a plain update must not force approval")
+	}
+}
+
+func TestApproveActionForcesUpdate(t *testing.T) {
+	s, svc := testServer(t, "secret")
+	form := url.Values{"csrf": {"t"}, "container": {"web"}, "next": {"/"}, "approve": {"1"}}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/actions/update", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(sessionFor(s, "t"))
+	s.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if svc.startCalls != 1 || svc.startKind != engine.JobUpdate {
+		t.Fatalf("start calls = %d kind = %s", svc.startCalls, svc.startKind)
+	}
+	if !svc.startOpts.Force {
+		t.Errorf("approve action did not set Force: %+v", svc.startOpts)
 	}
 	if len(svc.startOpts.Only) != 1 || svc.startOpts.Only[0] != "web" {
 		t.Errorf("options = %+v", svc.startOpts)

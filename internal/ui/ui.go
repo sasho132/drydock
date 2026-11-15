@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -468,6 +469,14 @@ func (s *Server) action(kind engine.JobKind) http.HandlerFunc {
 		opts := engine.Options{}
 		if container != "" {
 			opts.Only = []string{container}
+		}
+		// A manual click is the approval. Pending updates carry this flag so a
+		// container with drydock.approve=true can actually be applied; without
+		// it the engine would just record the same pending update again.
+		if kind == engine.JobUpdate {
+			if approve, err := strconv.ParseBool(strings.TrimSpace(r.PostFormValue("approve"))); err == nil {
+				opts.Force = approve
+			}
 		}
 		job, err := s.svc.StartJob(kind, opts, container)
 		if err != nil {

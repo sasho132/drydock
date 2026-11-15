@@ -37,7 +37,8 @@
               <input type="hidden" name="csrf" value="{{$.CSRF}}">
               <input type="hidden" name="container" value="{{.Name}}">
               <input type="hidden" name="next" value="{{$.Path}}">
-              <button class="btn xs" type="submit" {{if $.JobRunning}}disabled{{end}}>Update</button>
+              {{if .Approve}}<input type="hidden" name="approve" value="1">{{end}}
+              <button class="btn xs" type="submit" {{if $.JobRunning}}disabled{{end}}>{{if .Approve}}Approve &amp; update{{else}}Update{{end}}</button>
             </form>
             {{if .CanRollback}}
             <form method="post" action="/actions/rollback" class="inline">
@@ -75,7 +76,8 @@
       <input type="hidden" name="csrf" value="{{$.CSRF}}">
       <input type="hidden" name="container" value="{{.Container}}">
       <input type="hidden" name="next" value="{{$.Path}}">
-      <button class="btn xs primary" type="submit" {{if $.JobRunning}}disabled{{end}}>Update</button>
+      <input type="hidden" name="approve" value="1">
+      <button class="btn xs primary" type="submit" {{if $.JobRunning}}disabled{{end}}>Approve &amp; update</button>
     </form>
     {{end}}
   </li>
