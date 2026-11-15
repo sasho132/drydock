@@ -6,6 +6,12 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
+# Optional docker build settings. DOCKER_NETWORK=host makes module downloads
+# follow the host's routing (needed when host traffic uses a VPN or Tailscale
+# exit node that bridged build containers cannot reach).
+DOCKER_PLATFORM ?=
+DOCKER_NETWORK  ?=
+
 LDFLAGS := -s -w \
   -X $(MODULE)/internal/version.Version=$(VERSION) \
   -X $(MODULE)/internal/version.Commit=$(COMMIT) \
@@ -44,8 +50,10 @@ fmt-check: ## Fail if any Go file is not formatted
 
 check: fmt-check vet test ## Format check, vet, and test
 
-docker: ## Build the container image
+docker: ## Build the container image (DOCKER_PLATFORM=linux/amd64 DOCKER_NETWORK=host)
 	docker build \
+	  $(if $(DOCKER_PLATFORM),--platform=$(DOCKER_PLATFORM),) \
+	  $(if $(DOCKER_NETWORK),--network=$(DOCKER_NETWORK),) \
 	  --build-arg VERSION=$(VERSION) \
 	  --build-arg COMMIT=$(COMMIT) \
 	  --build-arg DATE=$(DATE) \

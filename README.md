@@ -213,6 +213,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 | `denied access ... may be private` for your own image | Drydock has no registry credentials. See [Private registries](#private-registries) |
 | Dashboard unreachable from another machine | It is bound to `127.0.0.1`. Set `DRYDOCK_BIND=0.0.0.0` and open the firewall, or use an SSH tunnel |
 | Rootless Docker | Mount `${XDG_RUNTIME_DIR}/docker.sock` instead of `/var/run/docker.sock` and adjust `DOCKER_GID` |
+| `go mod download` times out during `docker build` | Build containers bypass a VPN/Tailscale exit node. Build with host networking: `docker build --network=host ...` or `make docker DOCKER_NETWORK=host` |
 
 ## What an update actually does
 
