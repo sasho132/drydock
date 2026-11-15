@@ -156,8 +156,8 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request, sess *session
 		return
 	}
 	all := s.svc.History(0)
-	rows := s.rows(containers, all)
 	pending := s.svc.Pending()
+	rows := s.rows(containers, all, pending)
 
 	v.Summary = s.summary(containers, all, pending)
 	v.Pending = pending
@@ -179,7 +179,7 @@ func (s *Server) containers(w http.ResponseWriter, r *http.Request, sess *sessio
 		s.fail(w, r, v, "Could not list containers: "+err.Error())
 		return
 	}
-	rows := s.rows(containers, s.svc.History(0))
+	rows := s.rows(containers, s.svc.History(0), s.svc.Pending())
 	if v.Query != "" {
 		rows = filterRows(rows, v.Query)
 	}
@@ -200,7 +200,7 @@ func (s *Server) containerDetail(w http.ResponseWriter, r *http.Request, sess *s
 		return
 	}
 	all := s.svc.History(0)
-	rows := s.rows(containers, all)
+	rows := s.rows(containers, all, s.svc.Pending())
 	var found *containerRow
 	for i := range rows {
 		if rows[i].Name == name {
@@ -483,11 +483,7 @@ func (s *Server) action(kind engine.JobKind) http.HandlerFunc {
 			s.redirectFlash(w, r, back, "", err.Error())
 			return
 		}
-		sep := "?"
-		if strings.Contains(back, "?") {
-			sep = "&"
-		}
-		http.Redirect(w, r, back+sep+"job="+url.QueryEscape(job.ID), http.StatusSeeOther)
+		http.Redirect(w, r, withValues(back, url.Values{"job": {job.ID}}), http.StatusSeeOther)
 	})
 }
 
@@ -499,14 +495,25 @@ func (s *Server) redirectFlash(w http.ResponseWriter, r *http.Request, back, not
 	if errMsg != "" {
 		q.Set("error", errMsg)
 	}
-	if len(q) > 0 {
-		sep := "?"
-		if strings.Contains(back, "?") {
-			sep = "&"
-		}
-		back += sep + q.Encode()
+	http.Redirect(w, r, withValues(back, q), http.StatusSeeOther)
+}
+
+// withValues sets query parameters without duplicating keys or dropping the
+// rest of the URL. This matters after an action: the current page may still
+// carry a job= parameter from a previous run.
+func withValues(raw string, values url.Values) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
 	}
-	http.Redirect(w, r, back, http.StatusSeeOther)
+	q := u.Query()
+	for k, v := range values {
+		if len(v) > 0 {
+			q.Set(k, v[0])
+		}
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func (s *Server) jobJSON(w http.ResponseWriter, r *http.Request, sess *session) {
@@ -538,6 +545,7 @@ type view struct {
 	ReadOnly    bool
 	AuthEnabled bool
 	CanAct      bool
+	DryRun      bool
 	Login       bool
 	Next        string
 
@@ -578,7 +586,10 @@ type containerRow struct {
 	Managed     bool
 	MonitorOnly bool
 	Approve     bool
+	Pending     bool
 	Pinned      bool
+	CanUpdate   bool
+	BlockedWhy  string
 	CanRollback bool
 }
 
@@ -682,6 +693,7 @@ func (s *Server) base(r *http.Request, sess *session, title, nav string) view {
 	v.AuthEnabled = s.cfg.API.UI.AuthEnabled()
 	v.ReadOnly = !v.AuthEnabled
 	v.CanAct = v.AuthEnabled
+	v.DryRun = s.cfg.DryRun
 	if sess != nil {
 		v.User = sess.User
 		v.CSRF = sess.CSRF
@@ -703,7 +715,7 @@ func (s *Server) base(r *http.Request, sess *session, title, nav string) view {
 	return v
 }
 
-func (s *Server) rows(containers []engine.ContainerView, history []state.Entry) []containerRow {
+func (s *Server) rows(containers []engine.ContainerView, history []state.Entry, pending []state.Pending) []containerRow {
 	last := map[string]state.Entry{}
 	rollback := map[string]bool{}
 	for _, e := range history { // newest first
@@ -714,8 +726,13 @@ func (s *Server) rows(containers []engine.ContainerView, history []state.Entry) 
 			rollback[e.Container] = true
 		}
 	}
+	awaiting := make(map[string]bool, len(pending))
+	for _, p := range pending {
+		awaiting[p.Container] = true
+	}
 	out := make([]containerRow, 0, len(containers))
 	for _, c := range containers {
+		canUpdate, blockedWhy := updateAvailability(c, s.cfg)
 		row := containerRow{
 			Name:        c.Name,
 			Image:       c.Image,
@@ -727,7 +744,10 @@ func (s *Server) rows(containers []engine.ContainerView, history []state.Entry) 
 			Managed:     c.Managed,
 			MonitorOnly: c.MonitorOnly,
 			Approve:     c.Approve,
+			Pending:     awaiting[c.Name],
 			Pinned:      c.Pinned,
+			CanUpdate:   canUpdate,
+			BlockedWhy:  blockedWhy,
 			CanRollback: rollback[c.Name],
 		}
 		if e, ok := last[c.Name]; ok {
@@ -804,6 +824,23 @@ func historyRowsFor(entries []state.Entry, container, status string) []historyRo
 		filtered = append(filtered, e)
 	}
 	return historyRows(filtered, 0)
+}
+
+// updateAvailability explains why a container's Update button is disabled.
+// These cases are intentionally no-ops in the engine, so the dashboard should
+// not offer an action that cannot change anything.
+func updateAvailability(c engine.ContainerView, cfg *config.Config) (bool, string) {
+	switch {
+	case !c.Managed:
+		return false, "unmanaged"
+	case c.Pinned:
+		return false, "pinned"
+	case c.MonitorOnly:
+		return false, "monitor only"
+	case cfg.DryRun:
+		return false, "dry run"
+	}
+	return true, ""
 }
 
 func filterRows(rows []containerRow, q string) []containerRow {

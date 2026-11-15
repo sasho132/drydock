@@ -202,6 +202,9 @@ func TestRunDryRunDoesNotPull(t *testing.T) {
 	if len(h.store.Pending()) != 1 {
 		t.Error("dry run should record a pending update")
 	}
+	if got := h.store.Pending()[0].Reason; got != state.PendingReasonDryRun {
+		t.Errorf("pending reason = %q", got)
+	}
 }
 
 func TestRunMonitorOnlyDoesNotUpdate(t *testing.T) {
@@ -219,6 +222,9 @@ func TestRunMonitorOnlyDoesNotUpdate(t *testing.T) {
 	if h.docker.pullCalls != 0 {
 		t.Error("monitor-only must not pull")
 	}
+	if got := h.store.Pending()[0].Reason; got != state.PendingReasonMonitorOnly {
+		t.Errorf("pending reason = %q", got)
+	}
 }
 
 func TestRunApprovalRequiresForce(t *testing.T) {
@@ -230,6 +236,9 @@ func TestRunApprovalRequiresForce(t *testing.T) {
 	report, _ := h.engine.Run(context.Background(), Options{})
 	if report.Outcomes[0].Status != state.StatusPending {
 		t.Fatalf("expected pending approval, got %s", report.Outcomes[0].Status)
+	}
+	if got := h.store.Pending()[0].Reason; got != state.PendingReasonApproval {
+		t.Errorf("pending reason = %q", got)
 	}
 
 	report, _ = h.engine.Run(context.Background(), Options{Force: true})

@@ -80,7 +80,7 @@ func fixture() *fakeService {
 			Status: state.StatusUpdated, OldImageID: "sha256:old", NewImageID: "sha256:new",
 			Snapshot: &model.Snapshot{ImageID: "sha256:old"},
 		}},
-		pending: []state.Pending{{Container: "web", Image: "app:latest", DetectedAt: now}},
+		pending: []state.Pending{{Container: "web", Image: "app:latest", Reason: state.PendingReasonApproval, DetectedAt: now}},
 		job:     engine.Job{ID: "job-1", Kind: engine.JobUpdate, Status: engine.JobSucceeded},
 		jobOK:   true,
 	}
@@ -231,7 +231,7 @@ func TestActionRequiresCSRF(t *testing.T) {
 	if rec.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	if loc := rec.Header().Get("Location"); !strings.Contains(loc, "job=job-1") {
+	if loc := rec.Header().Get("Location"); loc != "/containers?job=job-1" {
 		t.Errorf("location = %q", loc)
 	}
 	if svc.startCalls != 1 || svc.startKind != engine.JobUpdate {
@@ -321,6 +321,137 @@ func TestContainerDetail(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "Not found") {
 		t.Errorf("missing container error page: %s", rec.Body.String())
+	}
+}
+
+func TestApprovalActionOnlyWhenPending(t *testing.T) {
+	s, svc := testServer(t, "secret")
+	svc.containers[0].Approve = true
+	svc.pending = nil
+
+	get := func(path string) string {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(sessionFor(s, "t"))
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s = %d", path, rec.Code)
+		}
+		return rec.Body.String()
+	}
+
+	for _, path := range []string{"/containers", "/containers/view?name=web"} {
+		body := get(path)
+		if strings.Contains(body, "Approve &amp; update") {
+			t.Errorf("%s offers approval while nothing is pending", path)
+		}
+		if !strings.Contains(body, ">Update") {
+			t.Errorf("%s is missing the update action", path)
+		}
+	}
+
+	svc.pending = []state.Pending{{Container: "web", Image: "app:latest"}}
+	for _, path := range []string{"/containers", "/containers/view?name=web"} {
+		body := get(path)
+		if !strings.Contains(body, "Approve &amp; update") {
+			t.Errorf("%s does not offer approval for a pending update", path)
+		}
+		if !strings.Contains(body, `name="approve"`) {
+			t.Errorf("%s does not submit the approve flag", path)
+		}
+	}
+}
+
+func TestCheckActionReturnsToCurrentPage(t *testing.T) {
+	s, svc := testServer(t, "secret")
+	form := url.Values{"csrf": {"t"}, "next": {"/containers?q=web"}}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/actions/check", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(sessionFor(s, "t"))
+	s.Handler().ServeHTTP(rec, req)
+
+	if svc.startKind != engine.JobCheck {
+		t.Fatalf("kind = %s", svc.startKind)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/containers?job=job-1&q=web" {
+		t.Errorf("location = %q", loc)
+	}
+}
+
+func TestActionReplacesStaleJobParam(t *testing.T) {
+	s, _ := testServer(t, "secret")
+	form := url.Values{"csrf": {"t"}, "container": {"web"}, "next": {"/?job=old&q=web"}}
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/actions/update", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(sessionFor(s, "t"))
+	s.Handler().ServeHTTP(rec, req)
+
+	if loc := rec.Header().Get("Location"); loc != "/?job=job-1&q=web" {
+		t.Errorf("location = %q", loc)
+	}
+}
+
+func TestUnavailableUpdateActionsAreExplained(t *testing.T) {
+	s, svc := testServer(t, "secret")
+	svc.containers[0].Managed = false
+
+	for _, path := range []string{"/containers", "/containers/view?name=web"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.AddCookie(sessionFor(s, "t"))
+		rec := httptest.NewRecorder()
+		s.Handler().ServeHTTP(rec, req)
+		body := rec.Body.String()
+		// The top bar owns one update form; a per-container form would add another.
+		if got := strings.Count(body, `action="/actions/update"`); got != 1 {
+			t.Errorf("%s offers an update for an unmanaged container", path)
+		}
+		if !strings.Contains(body, "unmanaged") {
+			t.Errorf("%s does not explain why updates are unavailable", path)
+		}
+	}
+
+	svc.containers[0].Managed = true
+	svc.containers[0].MonitorOnly = true
+	req := httptest.NewRequest(http.MethodGet, "/containers", nil)
+	req.AddCookie(sessionFor(s, "t"))
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	body := rec.Body.String()
+	if got := strings.Count(body, `action="/actions/update"`); got != 1 {
+		t.Error("containers page offers an update for a monitor-only container")
+	}
+	if !strings.Contains(body, "monitor only") {
+		t.Error("containers page does not explain the monitor-only policy")
+	}
+}
+
+func TestNonActionablePendingHidesApprove(t *testing.T) {
+	s, svc := testServer(t, "secret")
+	svc.pending = []state.Pending{{Container: "web", Image: "app:latest", Reason: state.PendingReasonMonitorOnly}}
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(sessionFor(s, "t"))
+	rec := httptest.NewRecorder()
+	s.Handler().ServeHTTP(rec, req)
+	body := rec.Body.String()
+	if strings.Contains(body, `name="approve"`) {
+		t.Error("monitor-only pending entry offers an approve action")
+	}
+	if !strings.Contains(body, "monitor only") {
+		t.Error("monitor-only pending entry is not labelled")
+	}
+
+	svc.pending[0].Reason = state.PendingReasonDryRun
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(sessionFor(s, "t"))
+	s.Handler().ServeHTTP(rec, req)
+	if !strings.Contains(rec.Body.String(), "dry run") {
+		t.Error("dry-run pending entry is not labelled")
 	}
 }
 

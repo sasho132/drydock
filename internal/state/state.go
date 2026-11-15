@@ -51,6 +51,15 @@ type Entry struct {
 	Snapshot    *model.Snapshot `json:"snapshot,omitempty"`
 }
 
+// Reasons a Pending entry was recorded. Only check/approval entries can be
+// applied from the dashboard; dry-run and monitor-only never change anything.
+const (
+	PendingReasonCheck       = "check"
+	PendingReasonApproval    = "approval"
+	PendingReasonDryRun      = "dry-run"
+	PendingReasonMonitorOnly = "monitor-only"
+)
+
 // Pending is a detected update awaiting manual approval.
 type Pending struct {
 	Container  string    `json:"container"`
@@ -58,7 +67,14 @@ type Pending struct {
 	OldImageID string    `json:"old_image_id"`
 	NewImageID string    `json:"new_image_id,omitempty"`
 	NewDigest  string    `json:"new_digest,omitempty"`
+	Reason     string    `json:"reason,omitempty"`
 	DetectedAt time.Time `json:"detected_at"`
+}
+
+// Actionable reports whether approving this entry can actually update the
+// container. Entries from monitor-only or dry-run runs cannot.
+func (p Pending) Actionable() bool {
+	return p.Reason != PendingReasonDryRun && p.Reason != PendingReasonMonitorOnly
 }
 
 // Data is the on-disk document.

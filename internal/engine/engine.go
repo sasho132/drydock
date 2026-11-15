@@ -259,18 +259,27 @@ func (e *Engine) process(ctx context.Context, p policy.Policy, opts Options) (ou
 	e.metrics.IncScan("update_available")
 
 	dry := opts.DryRun || e.cfg.DryRun
+	reason := state.PendingReasonCheck
+	switch {
+	case p.MonitorOnly:
+		reason = state.PendingReasonMonitorOnly
+	case dry:
+		reason = state.PendingReasonDryRun
+	case p.Approve:
+		reason = state.PendingReasonApproval
+	}
 	switch {
 	case opts.CheckOnly:
-		_ = e.recordPending(c, remote)
+		_ = e.recordPending(c, remote, reason)
 		return finish(state.StatusPending, "update available (check only)", nil)
 	case dry:
-		_ = e.recordPending(c, remote)
+		_ = e.recordPending(c, remote, reason)
 		return finish(state.StatusPending, "update available (dry run)", nil)
 	case p.MonitorOnly:
-		_ = e.recordPending(c, remote)
+		_ = e.recordPending(c, remote, reason)
 		return finish(state.StatusPending, "update available (monitor only)", nil)
 	case p.Approve && !opts.Force:
-		_ = e.recordPending(c, remote)
+		_ = e.recordPending(c, remote, reason)
 		return finish(state.StatusPending, "update available (awaiting approval)", nil)
 	}
 
@@ -356,12 +365,13 @@ func (e *Engine) recordWithSnapshot(c *model.Container, out Outcome, snap *model
 	}
 }
 
-func (e *Engine) recordPending(c *model.Container, remote registry.Result) error {
+func (e *Engine) recordPending(c *model.Container, remote registry.Result, reason string) error {
 	return e.store.SetPending(state.Pending{
 		Container:  c.Name(),
 		Image:      c.ImageRef(),
 		OldImageID: c.ImageID(),
 		NewDigest:  remote.Digest,
+		Reason:     reason,
 	})
 }
 

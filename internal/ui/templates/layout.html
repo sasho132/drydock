@@ -37,10 +37,12 @@
       {{if .CanAct}}
       <form method="post" action="/actions/check" class="inline">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="next" value="{{.Path}}">
         <button class="btn ghost" type="submit" {{if .JobRunning}}disabled{{end}}>Check</button>
       </form>
       <form method="post" action="/actions/update" class="inline">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <input type="hidden" name="next" value="{{.Path}}">
         <button class="btn primary" type="submit" data-confirm="Update every managed container now? Unhealthy replacements are rolled back automatically." {{if .JobRunning}}disabled{{end}}>Update all</button>
       </form>
       {{end}}

@@ -490,7 +490,9 @@ What you get:
 - **Dashboard** — managed/pending/updated/failed/rollback counters, the
   container table with per-container **Update**/**Approve** and **Rollback**
   buttons, pending approvals, and recent activity. **Approve & update** applies
-  an update that `drydock.approve` would otherwise hold back.
+  an update that `drydock.approve` would otherwise hold back. Entries recorded
+  by monitor-only or dry-run checks are labelled instead, since nothing can be
+  applied from the dashboard in those modes.
 - **Containers** — filterable list and a detail page with image IDs, repo
   digests, labels, networks, the fully resolved policy, and per-container
   history.

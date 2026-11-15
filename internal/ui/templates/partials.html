@@ -33,13 +33,17 @@
         </td>
         <td data-label="Actions" class="right actions">
           {{if $.CanAct}}
+            {{if .CanUpdate}}
             <form method="post" action="/actions/update" class="inline">
               <input type="hidden" name="csrf" value="{{$.CSRF}}">
               <input type="hidden" name="container" value="{{.Name}}">
               <input type="hidden" name="next" value="{{$.Path}}">
-              {{if .Approve}}<input type="hidden" name="approve" value="1">{{end}}
-              <button class="btn xs" type="submit" {{if $.JobRunning}}disabled{{end}}>{{if .Approve}}Approve &amp; update{{else}}Update{{end}}</button>
+              {{if and .Approve .Pending}}<input type="hidden" name="approve" value="1">{{end}}
+              <button class="btn xs" type="submit" {{if $.JobRunning}}disabled{{end}}>{{if and .Approve .Pending}}Approve &amp; update{{else}}Update{{end}}</button>
             </form>
+            {{else}}
+            <span class="muted small" title="This container is not eligible for updates.">{{.BlockedWhy}}</span>
+            {{end}}
             {{if .CanRollback}}
             <form method="post" action="/actions/rollback" class="inline">
               <input type="hidden" name="csrf" value="{{$.CSRF}}">
@@ -72,13 +76,19 @@
       <span class="small muted">detected {{ago .DetectedAt}}</span>
     </div>
     {{if $.CanAct}}
-    <form method="post" action="/actions/update" class="inline">
-      <input type="hidden" name="csrf" value="{{$.CSRF}}">
-      <input type="hidden" name="container" value="{{.Container}}">
-      <input type="hidden" name="next" value="{{$.Path}}">
-      <input type="hidden" name="approve" value="1">
-      <button class="btn xs primary" type="submit" {{if $.JobRunning}}disabled{{end}}>Approve &amp; update</button>
-    </form>
+      {{if not .Actionable}}
+      <span class="muted small">{{if eq .Reason "monitor-only"}}monitor only{{else if eq .Reason "dry-run"}}dry run{{else}}{{.Reason}}{{end}}</span>
+      {{else if $.DryRun}}
+      <span class="muted small">dry run</span>
+      {{else}}
+      <form method="post" action="/actions/update" class="inline">
+        <input type="hidden" name="csrf" value="{{$.CSRF}}">
+        <input type="hidden" name="container" value="{{.Container}}">
+        <input type="hidden" name="next" value="{{$.Path}}">
+        <input type="hidden" name="approve" value="1">
+        <button class="btn xs primary" type="submit" {{if $.JobRunning}}disabled{{end}}>{{if eq .Reason "approval"}}Approve &amp; update{{else}}Update{{end}}</button>
+      </form>
+      {{end}}
     {{end}}
   </li>
   {{end}}

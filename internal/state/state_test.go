@@ -98,3 +98,18 @@ func TestPendingLifecycle(t *testing.T) {
 		t.Fatalf("pending after clear = %d", got)
 	}
 }
+
+func TestPendingActionable(t *testing.T) {
+	cases := map[string]bool{
+		"":                       true,
+		PendingReasonCheck:       true,
+		PendingReasonApproval:    true,
+		PendingReasonDryRun:      false,
+		PendingReasonMonitorOnly: false,
+	}
+	for reason, want := range cases {
+		if got := (Pending{Reason: reason}).Actionable(); got != want {
+			t.Errorf("reason %q actionable = %t, want %t", reason, got, want)
+		}
+	}
+}
