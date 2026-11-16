@@ -1,6 +1,8 @@
 Drydock
 Copyright 2026 sasho
 
+Drydock is licensed under the MIT License. See LICENSE.
+
 Drydock is an independent, from-scratch implementation of a Docker container
 auto-updater. Its design is informed by the behaviour and documentation of
 Watchtower (https://github.com/containrrr/watchtower), Copyright The
