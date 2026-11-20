@@ -112,6 +112,34 @@ The Compose file is production-shaped: nonroot user, read-only root filesystem,
 all capabilities dropped, state on a named volume, log rotation, a built-in
 healthcheck, and the dashboard bound to loopback by default.
 
+### Container healthcheck
+
+The `drydock` service defines a Docker healthcheck. Because the runtime image
+is distroless and has no shell or `curl`, the check runs the binary itself:
+
+```yaml
+healthcheck:
+  test: ["CMD", "/drydock", "healthcheck"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 15s
+```
+
+`drydock healthcheck` calls the local API's `/readyz` endpoint, which verifies
+that the Docker daemon is reachable. If the API is disabled, it pings the
+Docker daemon directly. It exits non-zero only when something is wrong, so
+Docker reports the container as `unhealthy`.
+
+```bash
+docker compose ps                                  # STATUS column shows healthy
+docker inspect -f '{{.State.Health.Status}}' drydock
+docker inspect -f '{{json .State.Health}}' drydock  # last probe output
+```
+
+The healthcheck is informational: Docker does not restart an unhealthy
+container. `restart: unless-stopped` still handles process exits.
+
 ### 1. Push the latest changes
 
 ```bash
@@ -212,6 +240,8 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 | The `drydock` row shows `rejected credentials` | An older build tried to update itself. Update Drydock; the Compose service now carries `drydock.enable: "false"` and self-detection is automatic |
 | `denied access ... may be private` for your own image | Drydock has no registry credentials. See [Private registries](#private-registries) |
 | Dashboard unreachable from another machine | It is bound to `127.0.0.1`. Set `DRYDOCK_BIND=0.0.0.0` and open the firewall, or use an SSH tunnel |
+| `drydock` shows `unhealthy` | Run `docker inspect -f '{{json .State.Health}}' drydock`. `/readyz` fails when the Docker socket is unreachable; also check that `DRYDOCK_API_ADDR` matches the port the API actually bound |
+| Healthcheck logs `connection refused` | The API is still starting or `DRYDOCK_API_ADDR` points at a port where nothing is listening. Check `docker compose logs drydock` |
 | Rootless Docker | Mount `${XDG_RUNTIME_DIR}/docker.sock` instead of `/var/run/docker.sock` and adjust `DOCKER_GID` |
 | `go mod download` times out during `docker build` | Build containers bypass a VPN/Tailscale exit node. Build with host networking: `docker build --network=host ...` or `make docker DOCKER_NETWORK=host` |
 
@@ -549,6 +579,11 @@ Enable with `--api` / `api.enabled: true`.
 When `api.token` is set, mutating endpoints require
 `Authorization: Bearer <token>`. Read-only endpoints stay open so Prometheus
 and load balancers need no secret.
+
+The Compose healthcheck uses `drydock healthcheck`, which probes `/readyz`
+when the API is enabled and otherwise pings the Docker daemon. `/healthz` is
+a liveness endpoint that does not touch Docker, while `/readyz` returns `503`
+when the daemon is unreachable.
 
 ### Metrics
 
