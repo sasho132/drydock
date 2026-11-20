@@ -109,8 +109,8 @@ On Linux, replace `--group-add 0` with
 ## Deploy on a server
 
 The Compose file is production-shaped: nonroot user, read-only root filesystem,
-all capabilities dropped, state on a named volume, log rotation, and the
-dashboard bound to loopback by default.
+all capabilities dropped, state on a named volume, log rotation, a built-in
+healthcheck, and the dashboard bound to loopback by default.
 
 ### 1. Push the latest changes
 
@@ -448,8 +448,14 @@ drydock containers           # list containers and resolved policy
 drydock history --limit 20   # audit trail
 drydock rollback web         # restore the image web ran before its last update
 drydock validate             # validate config and exit
+drydock healthcheck          # probe the running daemon; used by Compose
 drydock version
 ```
+
+The `healthcheck` command is what the Compose file runs: it probes `/readyz`
+when the API is enabled and otherwise pings the Docker daemon, exiting
+non-zero when something is wrong. It needs no shell, which matters because
+the image is distroless.
 
 Useful flags: `--config`, `--interval`, `--schedule`, `--only NAME`
 (repeatable), `--force`, `--dry-run`, `--json`, `--timeout`, `--api`,

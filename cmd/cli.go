@@ -8,8 +8,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -41,6 +44,7 @@ Commands:
   history      Show the update history
   rollback     Restore a container to the image it ran before its last update
   validate     Validate the configuration and exit
+  healthcheck  Probe the running daemon (used as a container healthcheck)
   version      Print version information
 
 Common flags:
@@ -112,6 +116,8 @@ func Main() int {
 		return runRollback(args)
 	case "validate":
 		return runValidate(args)
+	case "healthcheck":
+		return runHealthcheck(args)
 	case "version":
 		fmt.Printf("drydock %s (commit %s, built %s)\n", version.Version, version.Commit, version.Date)
 		return 0
@@ -606,6 +612,99 @@ func runValidate(args []string) int {
 	fmt.Printf("configuration valid: interval=%s schedule=%q state=%s concurrency=%d\n",
 		cfg.Interval.Duration, cfg.Schedule, cfg.StateFile, cfg.Concurrency)
 	return 0
+}
+
+// runHealthcheck probes the running daemon from inside the container. The
+// runtime image is distroless (no shell, curl, or wget), so the binary probes
+// itself. It exits 0 when healthy and 1 otherwise.
+func runHealthcheck(args []string) int {
+	c := newCommon("healthcheck", os.Stderr)
+	if err := c.parse(args); err != nil {
+		return 2
+	}
+	cfg, err := c.load()
+	if err != nil {
+		// A broken config means the daemon cannot be doing its job.
+		fmt.Fprintln(os.Stderr, "healthcheck: configuration error:", err)
+		return 1
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	if cfg.API.Enabled {
+		if err := probeAPI(ctx, cfg.API.Addr); err != nil {
+			fmt.Fprintln(os.Stderr, "healthcheck:", err)
+			return 1
+		}
+		return 0
+	}
+
+	// Without the HTTP API there is nothing local to probe, so verify that
+	// the Docker daemon the background process depends on is still reachable.
+	rt, err := docker.New(cfg.DockerHost, nil)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "healthcheck:", err)
+		return 1
+	}
+	defer rt.Close()
+	if err := rt.Ping(ctx); err != nil {
+		fmt.Fprintln(os.Stderr, "healthcheck:", err)
+		return 1
+	}
+	return 0
+}
+
+// probeAPI calls /readyz on the local API. The configured listen address may
+// bind every interface, so the probe always dials loopback.
+func probeAPI(ctx context.Context, addr string) error {
+	target, err := probeURL(addr)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return err
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil // never route a loopback probe through a proxy
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("probe %s: %w", target, err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("probe %s: %s", target, resp.Status)
+	}
+	return nil
+}
+
+// probeURL turns a listen address such as ":8080", "0.0.0.0:8080", or a bare
+// "8080" into a loopback health URL.
+func probeURL(addr string) (string, error) {
+	addr = strings.TrimSpace(addr)
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		// Allow a bare port, which net.Listen rejects but is an easy mistake
+		// in DRYDOCK_API_ADDR.
+		if _, convErr := strconv.Atoi(addr); convErr == nil {
+			port = addr
+		} else {
+			return "", fmt.Errorf("invalid api addr %q: %w", addr, err)
+		}
+	}
+	n, err := strconv.Atoi(port)
+	if err != nil || n < 1 || n > 65535 {
+		return "", fmt.Errorf("invalid api addr %q: missing or invalid port", addr)
+	}
+	return "http://127.0.0.1:" + port + "/readyz", nil
 }
 
 // setup builds the runtime, state store, registry client, and engine.

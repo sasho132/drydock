@@ -70,6 +70,16 @@ services:
       #   ssh -L 8080:127.0.0.1:8080 user@server
       - "${DRYDOCK_BIND:-127.0.0.1}:${DRYDOCK_PORT:-8080}:8080"
 
+    healthcheck:
+      # The runtime image is distroless (no shell, curl, or wget), so the
+      # binary probes itself. With the API enabled this calls /readyz;
+      # otherwise it pings the Docker daemon.
+      test: ["CMD", "/drydock", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - drydock-data:/var/lib/drydock
